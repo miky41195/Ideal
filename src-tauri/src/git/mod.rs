@@ -1,3 +1,4 @@
+pub mod ops;
 pub mod runner;
 pub mod status;
 
