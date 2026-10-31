@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tabs } from '../editor/tabs.svelte';
+  import { workspace } from '../state/workspace.svelte';
   import type { SidebarView } from '../state/workspace.svelte';
   let { active, onselect }: { active: SidebarView | null; onselect: (v: SidebarView) => void } = $props();
   const items: { id: SidebarView; icon: string; label: string }[] = [
@@ -8,11 +10,18 @@
     { id: 'notes', icon: '✎', label: 'Note' },
     { id: 'hub', icon: '◈', label: 'Hub' },
   ];
+
+  function pick(id: SidebarView) {
+    if (id === 'heatmap') {
+      tabs.openHeatmap();
+      workspace.showEditor();
+    } else onselect(id);
+  }
 </script>
 
 <nav>
   {#each items as it (it.id)}
-    <button class:on={active === it.id} title={it.label} aria-label={it.label} onclick={() => onselect(it.id)}>
+    <button class:on={active === it.id} title={it.label} aria-label={it.label} onclick={() => pick(it.id)}>
       {it.icon}
     </button>
   {/each}

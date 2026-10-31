@@ -63,12 +63,22 @@ export class GitState {
 
 export const git = new GitState();
 
+const changedListeners = new Set<() => void>();
+/** Subscribe to git://changed (fired by the backend watcher); returns an unsubscribe fn. */
+export function onGitChanged(cb: () => void): () => void {
+  changedListeners.add(cb);
+  return () => changedListeners.delete(cb);
+}
+
 /** First refresh, start the backend watcher, follow git://changed and window focus. */
 export async function initGit(projectPath: string): Promise<() => void> {
   git.path = projectPath;
   const offs: (() => void)[] = [];
   try {
-    offs.push(await listen<string>('git://changed', () => void git.refresh()));
+    offs.push(await listen<string>('git://changed', () => {
+        void git.refresh();
+        changedListeners.forEach((f) => f());
+      }));
   } catch (e) {
     console.warn('git listen failed', e);
   }

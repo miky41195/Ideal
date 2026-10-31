@@ -4,6 +4,7 @@
   import { onCommand } from '../commands';
   import { tabs, dirty, isFileTab } from './tabs.svelte';
   import DiffView from '../diff/DiffView.svelte';
+  import HeatmapView from '../heatmap/HeatmapView.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
@@ -57,7 +58,7 @@
           {#if tabs.active.kind === 'diff' && tabs.active.diff}
             <DiffView diff={tabs.active.diff} />
           {:else}
-            <div class="empty">Heatmap in arrivo</div>
+            <HeatmapView />
           {/if}
         </div>
       {/if}
