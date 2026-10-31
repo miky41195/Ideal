@@ -4,6 +4,7 @@
   import { workspace as ws } from './lib/state/workspace.svelte';
   import { onCommand, dispatch } from './lib/commands';
   import { routeKey } from './lib/keys/router';
+  import { isCommandAllowed } from './lib/keys/gate';
   import TopBar from './lib/layout/TopBar.svelte';
   import ActivityBar from './lib/layout/ActivityBar.svelte';
   import Sidebar from './lib/layout/Sidebar.svelte';
@@ -25,7 +26,7 @@
       onCommand('togglePanel', () => ws.togglePanel()),
       onCommand('newClaudeTab', () => {
         ws.addClaudeTab('new');
-        ws.mode = 'claude';
+        ws.showClaude();
       }),
     ];
     // Terminals handle their own keys; this covers focus outside xterm.
@@ -37,7 +38,7 @@
         { code: ev.code, ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey },
         inEditor ? 'editor' : 'other',
       );
-      if (cmd) {
+      if (cmd && isCommandAllowed(cmd, ws.mode)) {
         ev.preventDefault();
         dispatch(cmd);
       }

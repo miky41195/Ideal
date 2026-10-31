@@ -23,8 +23,12 @@
   }
 
   async function pick() {
-    const dir = await open({ directory: true, multiple: false });
-    if (typeof dir === 'string') await openProject(dir);
+    try {
+      const dir = await open({ directory: true, multiple: false });
+      if (typeof dir === 'string') await openProject(dir);
+    } catch (e) {
+      error = String(e);
+    }
   }
 </script>
 

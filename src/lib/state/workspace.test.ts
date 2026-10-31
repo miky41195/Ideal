@@ -54,4 +54,23 @@ describe('Workspace', () => {
     w.togglePanel();
     expect(w.panelOpen).toBe(false);
   });
+
+  it('closing a non-active tab keeps the active one', () => {
+    const first = w.claudeTabs[0];
+    const second = w.addClaudeTab();
+    w.closeClaudeTab(first.id);
+    expect(w.activeClaudeTab?.id).toBe(second.id);
+  });
+
+  it('selectClaudeTab ignores unknown ids', () => {
+    const before = w.activeClaudeId;
+    w.selectClaudeTab('nope');
+    expect(w.activeClaudeId).toBe(before);
+  });
+
+  it('showClaude sets claude mode', () => {
+    w.toggleMode();
+    w.showClaude();
+    expect(w.mode).toBe('claude');
+  });
 });

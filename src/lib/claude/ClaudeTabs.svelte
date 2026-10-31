@@ -15,6 +15,11 @@
     return { type: 'Claude', resume: null, continue_last: false };
   }
 
+  function close(id: string) {
+    delete status[id];
+    ws.closeClaudeTab(id);
+  }
+
   function restart(id: string) {
     status[id] = { gen: st(id).gen + 1 };
   }
@@ -25,7 +30,7 @@
     {#each ws.claudeTabs as t (t.id)}
       <div class="tab" class:on={t.id === ws.activeClaudeId}>
         <button class="label" onclick={() => ws.selectClaudeTab(t.id)}>{t.title}</button>
-        <button class="x" title="Chiudi" aria-label="Chiudi {t.title}" onclick={() => ws.closeClaudeTab(t.id)}>×</button>
+        <button class="x" title="Chiudi" aria-label="Chiudi {t.title}" onclick={() => close(t.id)}>×</button>
       </div>
     {/each}
     <button class="add" title="Nuova sessione (Ctrl+Maiusc+T)" aria-label="Nuova sessione" onclick={() => ws.addClaudeTab('new')}>+</button>
@@ -50,7 +55,7 @@
             onerror={(m) => (status[t.id] = { ...st(t.id), error: m })}
           />
         {/key}
-        {#if s.error || s.exited}
+        {#if shown && (s.error || s.exited)}
           <div class="overlay">
             {#if s.error}
               <p>{s.error.includes('claude non trovato') ? 'claude non trovato nel PATH' : s.error}</p>
@@ -125,6 +130,7 @@
     inset: 0;
   }
   .slot.off {
+    visibility: hidden;
     pointer-events: none;
   }
   .overlay {

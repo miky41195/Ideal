@@ -31,6 +31,10 @@ export class Workspace {
     this.mode = this.mode === 'claude' ? 'editor' : 'claude';
   }
 
+  showClaude(): void {
+    this.mode = 'claude';
+  }
+
   togglePanel(): void {
     this.panelOpen = !this.panelOpen;
   }
