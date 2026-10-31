@@ -28,7 +28,7 @@
     {#each tabs.tabs as t (t.path)}
       <div class="tab" class:active={t.path === tabs.activePath} role="presentation">
         <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={t.path} onclick={() => tabs.select(t.path)}>
-          {t.name}{#if dirty(t)}<span class="dot" aria-label="modificato"> ●</span>{/if}
+          {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"> ●</span>{/if}
         </button>
         <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}>×</button>
       </div>
@@ -80,6 +80,9 @@
   .label {
     padding: 6px 4px 6px 12px;
     white-space: nowrap;
+  }
+  .orph {
+    color: var(--danger);
   }
   .dot {
     color: var(--accent);

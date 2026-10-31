@@ -502,7 +502,7 @@ mod tests {
         let cwd = dir.path().to_str().unwrap();
         let mgr = PtyManager::new();
         let l = cmd(&["ping", "-n", "30", "127.0.0.1"]);
-        let mut spawn_as = |owner: &str| {
+        let spawn_as = |owner: &str| {
             let (tx, rx) = mpsc::channel();
             let out = Arc::new(Mutex::new(String::new()));
             let o = out.clone();

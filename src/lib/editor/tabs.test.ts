@@ -6,7 +6,7 @@ vi.mock('../fs-client', () => ({
 }));
 
 import { readTextFile, writeTextFile } from '../fs-client';
-import { Tabs, dirty } from './tabs.svelte';
+import { Tabs, dirty, hasUnsaved, remapPath } from './tabs.svelte';
 
 const read = vi.mocked(readTextFile);
 const write = vi.mocked(writeTextFile);
@@ -113,5 +113,56 @@ describe('Tabs', () => {
     await t.save('r');
     await t.saveAll();
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('unsaved / retarget / orphan', () => {
+  it('hasUnsaved detects dirty tabs', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\\p\\a.ts');
+    expect(hasUnsaved(t.tabs)).toBe(false);
+    t.setContent('C:\\p\\a.ts', 'x');
+    expect(hasUnsaved(t.tabs)).toBe(true);
+  });
+
+  it('remapPath respects separators', () => {
+    expect(remapPath('C:\\p\\d', 'C:\\p\\d', 'C:\\p\\e')).toBe('C:\\p\\e');
+    expect(remapPath('C:\\p\\d\\a.ts', 'C:\\p\\d', 'C:\\p\\e')).toBe('C:\\p\\e\\a.ts');
+    expect(remapPath('C:\\p\\dx\\a.ts', 'C:\\p\\d', 'C:\\p\\e')).toBeNull();
+  });
+
+  it('retarget renames a file tab, errors and active path', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\\p\\a.ts');
+    t.errors['C:\\p\\a.ts'] = 'boom';
+    t.retarget('C:\\p\\a.ts', 'C:\\p\\b.ts');
+    expect(t.tabs[0].path).toBe('C:\\p\\b.ts');
+    expect(t.tabs[0].name).toBe('b.ts');
+    expect(t.activePath).toBe('C:\\p\\b.ts');
+    expect(t.errors['C:\\p\\b.ts']).toBe('boom');
+    expect(t.errors['C:\\p\\a.ts']).toBeUndefined();
+  });
+
+  it('retarget folder prefix moves nested tabs only', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\\p\\d\\a.ts');
+    await t.openFile('C:\\p\\dx\\b.ts');
+    const seen: string[] = [];
+    t.onRetarget((f, to) => seen.push(`${f}>${to}`));
+    t.retarget('C:\\p\\d', 'C:\\p\\e');
+    expect(t.tabs.map((x) => x.path)).toEqual(['C:\\p\\e\\a.ts', 'C:\\p\\dx\\b.ts']);
+    expect(seen).toEqual(['C:\\p\\d>C:\\p\\e']);
+  });
+
+  it('orphan closes clean tabs and flags dirty ones', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\\p\\d\\a.ts');
+    await t.openFile('C:\\p\\d\\b.ts');
+    t.setContent('C:\\p\\d\\b.ts', 'changed');
+    t.orphan('C:\\p\\d');
+    expect(t.tabs.map((x) => x.path)).toEqual(['C:\\p\\d\\b.ts']);
+    expect(t.tabs[0].orphaned).toBe(true);
+    await t.save('C:\\p\\d\\b.ts');
+    expect(t.tabs[0].orphaned).toBe(false);
   });
 });

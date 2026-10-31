@@ -8,6 +8,8 @@
   import { routeKey } from '../keys/router';
   import { dispatch } from '../commands';
   import { settings } from '../settings/settings.svelte';
+  import { workspace as ws } from '../state/workspace.svelte';
+  import { terminalShouldCapture } from '../keys/gate';
 
   let {
     kind,
@@ -59,7 +61,7 @@
         { code: ev.code, ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey },
         'terminal',
       );
-      if (cmd) {
+      if (cmd && terminalShouldCapture(cmd, ws.mode)) {
         ev.preventDefault();
         dispatch(cmd);
         return false;

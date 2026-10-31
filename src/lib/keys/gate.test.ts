@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isCommandAllowed } from './gate';
+import { isCommandAllowed, terminalShouldCapture } from './gate';
 
 describe('isCommandAllowed', () => {
   it('blocks editor-only commands in claude mode', () => {
@@ -11,5 +11,14 @@ describe('isCommandAllowed', () => {
   it('allows global commands in both modes', () => {
     expect(isCommandAllowed('toggleMode', 'claude')).toBe(true);
     expect(isCommandAllowed('newClaudeTab', 'editor')).toBe(true);
+  });
+});
+
+describe('terminalShouldCapture', () => {
+  it('lets editor-only keys reach the PTY in claude mode', () => {
+    expect(terminalShouldCapture('save', 'claude')).toBe(false);
+    expect(terminalShouldCapture('save', 'editor')).toBe(true);
+    expect(terminalShouldCapture('toggleMode', 'claude')).toBe(true);
+    expect(terminalShouldCapture(null, 'editor')).toBe(false);
   });
 });

@@ -8,9 +8,20 @@ export interface EditorTab {
   eol: Eol;
   readonly: boolean;
   reason?: string;
+  /** File/folder deleted on disk while the tab had unsaved edits; saving recreates it. */
+  orphaned?: boolean;
 }
 
 export const dirty = (tab: EditorTab): boolean => tab.content !== tab.savedContent;
+
+export const hasUnsaved = (tabs: EditorTab[]): boolean => tabs.some(dirty);
+
+/** Maps `p` through a rename of `from` to `to` (file itself or anything under it); null if unaffected. */
+export function remapPath(p: string, from: string, to: string): string | null {
+  if (p === from) return to;
+  if (p.startsWith(from) && (p[from.length] === '\\' || p[from.length] === '/')) return to + p.slice(from.length);
+  return null;
+}
 
 const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -20,6 +31,45 @@ export class Tabs {
   /** Save errors, per path; cleared only by that path's successful save or close. */
   errors = $state<Record<string, string>>({});
   openError = $state<string | null>(null);
+  private retargetListeners = new Set<(from: string, to: string) => void>();
+
+  /** Notified after tabs are retargeted (lets editors move per-path caches). */
+  onRetarget(fn: (from: string, to: string) => void): () => void {
+    this.retargetListeners.add(fn);
+    return () => this.retargetListeners.delete(fn);
+  }
+
+  /** A file or folder was renamed/moved on disk: follow it in open tabs. */
+  retarget(from: string, to: string): void {
+    for (const t of this.tabs) {
+      const np = remapPath(t.path, from, to);
+      if (np === null) continue;
+      const old = t.path;
+      t.path = np;
+      t.name = nameOf(np);
+      if (old in this.errors) {
+        this.errors[np] = this.errors[old];
+        delete this.errors[old];
+      }
+      if (this.activePath === old) this.activePath = np;
+    }
+    for (const fn of this.retargetListeners) fn(from, to);
+  }
+
+  /** A file or folder was deleted on disk: close clean tabs, keep dirty ones flagged. */
+  orphan(path: string): void {
+    for (const t of [...this.tabs]) {
+      if (remapPath(t.path, path, path) === null) continue;
+      if (dirty(t)) {
+        t.orphaned = true;
+        continue;
+      }
+      const j = this.tabs.findIndex((x) => x.path === t.path);
+      this.tabs.splice(j, 1);
+      delete this.errors[t.path];
+      if (this.activePath === t.path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
+    }
+  }
 
   get active(): EditorTab | undefined {
     return this.tabs.find((t) => t.path === this.activePath);
@@ -78,6 +128,7 @@ export class Tabs {
     try {
       await writeTextFile(path, snapshot, t.eol);
       t.savedContent = snapshot;
+      t.orphaned = false;
       delete this.errors[path];
     } catch (e) {
       this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;

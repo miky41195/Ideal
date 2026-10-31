@@ -282,8 +282,17 @@ pub fn add_recent(path: String) -> Result<Vec<String>, String> {
     add_recent_impl(&config_dir(), &path)
 }
 
+fn check_is_dir(path: &str) -> Result<(), String> {
+    if std::path::Path::new(path).is_dir() {
+        Ok(())
+    } else {
+        Err("non è una cartella".to_string())
+    }
+}
+
 #[tauri::command(async)]
 pub fn open_project_window(app: AppHandle, path: String) -> Result<(), String> {
+    check_is_dir(&path)?;
     let label = window_label(&path);
     // Best effort: failing to record the recent entry must not block opening.
     let _ = add_recent_impl(&config_dir(), &path);
@@ -344,6 +353,16 @@ pub fn start_watcher(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn check_is_dir_rejects_files_and_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("a.txt");
+        std::fs::write(&f, "x").unwrap();
+        assert!(super::check_is_dir(dir.path().to_str().unwrap()).is_ok());
+        assert!(super::check_is_dir(f.to_str().unwrap()).is_err());
+        assert!(super::check_is_dir(r"C:\nope\missing").is_err());
+    }
+
     use super::*;
     use std::fs;
 

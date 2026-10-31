@@ -17,5 +17,5 @@ npm run tauri dev        # sviluppo
 npm run tauri build      # release + installer NSIS
 npm test                 # test frontend (Vitest)
 cd src-tauri && cargo test   # test Rust
-pwsh scripts/measure-ram.ps1 # misura RAM di Ideal e figli (budget: totale < 250 MB, main < 50 MB)
+pwsh scripts/measure-ram.ps1 # misura RAM di Ideal e figli (working set privato; budget: totale < 250 MB, main < 50 MB)
 ```

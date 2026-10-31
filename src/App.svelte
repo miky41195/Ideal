@@ -16,6 +16,9 @@
   import Palette from './lib/palette/Palette.svelte';
   import Toasts from './lib/ui/Toasts.svelte';
   import { settings } from './lib/settings/settings.svelte';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { ask } from '@tauri-apps/plugin-dialog';
+  import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -49,7 +52,21 @@
       }
     };
     window.addEventListener('keydown', onKey);
+    let offClose: (() => void) | undefined;
+    if (project) {
+      void getCurrentWindow()
+        .onCloseRequested(async (e) => {
+          if (!hasUnsaved(tabs.tabs)) return;
+          const ok = await ask('Ci sono modifiche non salvate. Chiudere senza salvare?', {
+            title: 'Ideal',
+            kind: 'warning',
+          });
+          if (!ok) e.preventDefault();
+        })
+        .then((f) => (offClose = f));
+    }
     return () => {
+      offClose?.();
       offs.forEach((f) => f());
       window.removeEventListener('keydown', onKey);
     };

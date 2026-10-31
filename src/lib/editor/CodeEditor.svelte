@@ -27,7 +27,7 @@
   import { oneDark } from '@codemirror/theme-one-dark';
   import { languageFor } from './languages';
   import { settings } from '../settings/settings.svelte';
-  import type { EditorTab } from './tabs.svelte';
+  import { tabs, remapPath, type EditorTab } from './tabs.svelte';
 
   let {
     tab,
@@ -135,7 +135,17 @@
   onMount(() => {
     view = new EditorView({ parent: host });
     show(tab);
+    const off = tabs.onRetarget((from, to) => {
+      for (const p of [...states.keys()]) {
+        const np = remapPath(p, from, to);
+        if (np === null || np === p) continue;
+        states.set(np, states.get(p)!);
+        states.delete(p);
+      }
+      if (currentPath) currentPath = remapPath(currentPath, from, to) ?? currentPath;
+    });
     return () => {
+      off();
       view?.destroy();
       view = undefined;
     };

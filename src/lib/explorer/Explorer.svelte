@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { listDir, createFile, createDir, renamePath, deletePath } from '../fs-client';
-  import { openFile } from '../editor/tabs.svelte';
+  import { openFile, tabs } from '../editor/tabs.svelte';
   import { workspace } from '../state/workspace.svelte';
   import { toggle, replaceChildren, findNode, type Node } from './tree';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
@@ -110,7 +110,9 @@
           edit = null;
           return;
         }
-        await renamePath(e.target!, join(e.parent, name));
+        const to = join(e.parent, name);
+        await renamePath(e.target!, to);
+        tabs.retarget(e.target!, to);
       } else if (e.kind === 'file') {
         await createFile(join(e.parent, name));
       } else {
@@ -128,6 +130,7 @@
     if (!ok) return;
     try {
       await deletePath(n.path);
+      tabs.orphan(n.path);
       if (selected === n.path) selected = null;
       await refresh(parentOf(n.path));
     } catch (err) {

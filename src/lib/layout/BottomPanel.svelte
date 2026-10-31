@@ -3,7 +3,7 @@
   import { settings } from '../settings/settings.svelte';
   import Splitter from './Splitter.svelte';
   let { cwd, open }: { cwd: string; open: boolean } = $props();
-  let height = $state(240);
+  let height = $state(settings.value.layout.panelHeight);
 </script>
 
 <!-- Kept mounted when closed so the shell survives toggling. -->
