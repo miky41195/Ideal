@@ -152,10 +152,17 @@ pub fn load(dir: &Path) -> SettingsWithWarning {
 }
 
 pub fn load_state(dir: &Path) -> AppState {
-    std::fs::read_to_string(dir.join("state.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok())
-        .unwrap_or_default()
+    let path = dir.join("state.json");
+    let Ok(text) = std::fs::read_to_string(&path) else { return AppState::default() };
+    match serde_json::from_str(text.trim_start_matches('\u{feff}')) {
+        Ok(s) => s,
+        Err(e) => {
+            // Keep the corrupt file around before a later save overwrites it.
+            eprintln!("state.json corrotto ({e}); salvato come state.json.bad");
+            let _ = std::fs::rename(&path, dir.join("state.json.bad"));
+            AppState::default()
+        }
+    }
 }
 
 pub fn save_state(dir: &Path, state: &AppState) -> Result<(), String> {
@@ -264,18 +271,25 @@ pub fn open_project_window(app: AppHandle, path: String) -> Result<(), String> {
         let _ = w.unminimize();
         return w.set_focus().map_err(err);
     }
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(project_url(&path).into()))
+    match WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(project_url(&path).into()))
         .title("Ideal")
         .inner_size(1280.0, 800.0)
         .build()
-        .map(|_| ())
-        .map_err(err)
+    {
+        Ok(_) => Ok(()),
+        Err(e) => match app.get_webview_window(&label) {
+            // Lost a race with another open of the same project: focus the winner.
+            Some(w) => w.set_focus().map_err(err),
+            None => Err(err(e)),
+        },
+    }
 }
 
 /// Watch settings.json and emit `settings://changed`. Blocks on a channel (no polling).
 pub fn start_watcher(app: AppHandle) {
     let dir = config_dir();
-    if std::fs::create_dir_all(&dir).is_err() {
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("watcher settings: impossibile creare {}: {e}", dir.display());
         return;
     }
     let (tx, rx) = mpsc::channel::<()>();
@@ -287,8 +301,15 @@ pub fn start_watcher(app: AppHandle) {
             }
         }
     });
-    let Ok(mut watcher) = watcher else { return };
-    if watcher.watch(&dir, RecursiveMode::NonRecursive).is_err() {
+    let mut watcher = match watcher {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("watcher settings: creazione fallita: {e}");
+            return;
+        }
+    };
+    if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
+        eprintln!("watcher settings: watch fallito su {}: {e}", dir.display());
         return;
     }
     std::thread::spawn(move || {
@@ -296,7 +317,7 @@ pub fn start_watcher(app: AppHandle) {
         while rx.recv().is_ok() {
             // Debounce: wait until 200 ms pass without new events.
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
-            let _ = app.emit("settings://changed", load(&dir).settings);
+            let _ = app.emit("settings://changed", load(&dir));
         }
     });
 }
@@ -349,6 +370,29 @@ mod tests {
         assert!(r.warning.is_none());
         fs::write(d.path().join("settings.json"), r#"{"editor":{"tabSize":"a"}}"#).unwrap();
         assert!(load(d.path()).warning.is_some());
+    }
+
+    #[test]
+    fn corrupt_state_is_backed_up() {
+        let d = tmp();
+        fs::write(d.path().join("state.json"), "{ broken").unwrap();
+        assert_eq!(load_state(d.path()), AppState::default());
+        assert_eq!(fs::read_to_string(d.path().join("state.json.bad")).unwrap(), "{ broken");
+        assert!(!d.path().join("state.json").exists());
+    }
+
+    #[test]
+    fn deep_merge_nested_array_and_null() {
+        let mut base = serde_json::json!({"a":{"b":1,"c":2},"arr":[1,2,3],"s":"x"});
+        deep_merge(&mut base, serde_json::json!({"a":{"b":9},"arr":[4],"s":null}));
+        assert_eq!(base, serde_json::json!({"a":{"b":9,"c":2},"arr":[4],"s":null}));
+
+        let d = tmp();
+        fs::write(d.path().join("settings.json"), r#"{"terminal":{"shell":null}}"#).unwrap();
+        let r = load(d.path());
+        assert!(r.warning.is_none());
+        assert_eq!(r.settings.terminal.shell, None);
+        assert_eq!(r.settings.terminal.font_size, 13);
     }
 
     #[test]

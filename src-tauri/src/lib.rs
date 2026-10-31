@@ -3,7 +3,7 @@ mod fs_cmds;
 mod pty;
 mod settings;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,9 +32,14 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
-                window.app_handle().state::<pty::PtyManager>().kill_all();
+                window.app_handle().state::<pty::PtyManager>().kill_owned_by(window.label());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                app.state::<pty::PtyManager>().kill_all();
+            }
+        });
 }

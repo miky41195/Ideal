@@ -130,6 +130,7 @@ struct PtySession {
     pid: Option<u32>,
     job: Option<Job>,
     exited: AtomicBool,
+    owner: String,
 }
 
 type Sessions = Arc<Mutex<HashMap<u32, Arc<PtySession>>>>;
@@ -203,6 +204,7 @@ impl PtyManager {
     pub fn spawn(
         &self,
         launch: &Launch,
+        owner: &str,
         cwd: &str,
         cols: u16,
         rows: u16,
@@ -248,6 +250,7 @@ impl PtyManager {
             pid,
             job,
             exited: AtomicBool::new(false),
+            owner: owner.to_string(),
         });
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
@@ -329,6 +332,21 @@ impl PtyManager {
         Ok(())
     }
 
+    /// Kill every session spawned by the window with this label.
+    pub fn kill_owned_by(&self, owner: &str) {
+        let ids: Vec<u32> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, s)| s.owner == owner)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ids {
+            let _ = self.kill(id);
+        }
+    }
+
     pub fn kill_all(&self) {
         let ids: Vec<u32> = self.sessions.lock().unwrap().keys().copied().collect();
         for id in ids {
@@ -355,6 +373,7 @@ pub struct ExitPayload {
 #[tauri::command(async)]
 pub fn pty_spawn(
     mgr: State<'_, PtyManager>,
+    window: tauri::Window,
     kind: PtyKind,
     cwd: String,
     cols: u16,
@@ -369,7 +388,7 @@ pub fn pty_spawn(
     let exit_cb: ExitCb = Arc::new(move |code| {
         let _ = on_exit.send(ExitPayload { code });
     });
-    mgr.spawn(&launch, &cwd, cols, rows, data_cb, exit_cb)
+    mgr.spawn(&launch, window.label(), &cwd, cols, rows, data_cb, exit_cb)
 }
 
 #[tauri::command(async)]
@@ -410,6 +429,7 @@ mod tests {
         let id = mgr
             .spawn(
                 l,
+                "test",
                 cwd,
                 80,
                 24,
@@ -474,6 +494,49 @@ mod tests {
         assert_eq!(mgr.resize(id, 10, 0), Err("invalid size".to_string()));
         assert!(mgr.resize(id, 100, 30).is_ok());
         mgr.kill_all();
+    }
+
+    #[test]
+    fn kill_owned_by_only_kills_that_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_str().unwrap();
+        let mgr = PtyManager::new();
+        let l = cmd(&["ping", "-n", "30", "127.0.0.1"]);
+        let mut spawn_as = |owner: &str| {
+            let (tx, rx) = mpsc::channel();
+            let out = Arc::new(Mutex::new(String::new()));
+            let o = out.clone();
+            let id = mgr
+                .spawn(
+                    &l,
+                    owner,
+                    cwd,
+                    80,
+                    24,
+                    Arc::new(move |s| o.lock().unwrap().push_str(&s)),
+                    Arc::new(move |c| {
+                        let _ = tx.send(c);
+                    }),
+                )
+                .unwrap();
+            (id, out, rx)
+        };
+        let (a, out_a, rx_a) = spawn_as("win-a");
+        let (b, out_b, rx_b) = spawn_as("win-b");
+        // Play the terminal: answer ConPTY's cursor-position request.
+        let (mut na, mut nb) = (0, 0);
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_secs(2) {
+            answer_dsr(&mgr, a, &out_a, &mut na);
+            answer_dsr(&mgr, b, &out_b, &mut nb);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        mgr.kill_owned_by("win-a");
+        assert!(rx_a.recv_timeout(Duration::from_secs(5)).is_ok(), "owner a should exit");
+        assert!(rx_b.recv_timeout(Duration::from_millis(500)).is_err(), "owner b must stay alive");
+        assert!(mgr.get(b).is_ok());
+        mgr.kill_all();
+        assert!(rx_b.recv_timeout(Duration::from_secs(5)).is_ok());
     }
 
     fn pid_alive(pid: u32) -> bool {
