@@ -59,7 +59,7 @@
     <TopBar {name} mode={ws.mode} ontoggle={() => ws.toggleMode()} />
     <div class="row">
       <ActivityBar active={ws.sidebarView} onselect={selectView} />
-      {#if ws.sidebarView}<Sidebar view={ws.sidebarView} />{/if}
+      {#if ws.sidebarView}<Sidebar view={ws.sidebarView} projectPath={project} />{/if}
       <div class="center">
         <div class="main">
           <!-- Claude stays mounted in both modes so sessions persist. -->

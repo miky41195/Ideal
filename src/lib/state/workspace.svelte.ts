@@ -35,6 +35,10 @@ export class Workspace {
     this.mode = 'claude';
   }
 
+  showEditor(): void {
+    this.mode = 'editor';
+  }
+
   togglePanel(): void {
     this.panelOpen = !this.panelOpen;
   }

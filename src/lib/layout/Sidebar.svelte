@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SidebarView } from '../state/workspace.svelte';
-  let { view }: { view: SidebarView } = $props();
+  import Explorer from '../explorer/Explorer.svelte';
+  let { view, projectPath }: { view: SidebarView; projectPath: string } = $props();
   const titles: Record<SidebarView, string> = {
     explorer: 'Esplora file',
     git: 'Git',
@@ -12,9 +13,13 @@
 
 <aside>
   <div class="title">{titles[view]}</div>
-  <div class="body">
-    <p class="dim">In arrivo</p>
-  </div>
+  {#if view === 'explorer'}
+    <Explorer root={projectPath} />
+  {:else}
+    <div class="body">
+      <p class="dim">In arrivo</p>
+    </div>
+  {/if}
 </aside>
 
 <style>
