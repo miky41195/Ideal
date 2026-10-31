@@ -58,6 +58,59 @@ fn valid_date(d: &str) -> bool {
             .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() })
 }
 
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+fn civil_from_days(z: i64) -> String {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn parse_ymd(d: &str) -> (i64, i64, i64) {
+    let n = |r: std::ops::Range<usize>| d[r].parse::<i64>().unwrap_or(1);
+    (n(0..4), n(5..7), n(8..10))
+}
+
+/// `date` (YYYY-MM-DD) shifted by `n` days.
+fn add_days(date: &str, n: i64) -> String {
+    let (y, m, d) = parse_ymd(date);
+    civil_from_days(days_from_civil(y, m, d) + n)
+}
+
+/// Today's date in the local timezone, via git's own idea of "now" (no chrono dependency).
+fn local_today(cwd: &Path) -> String {
+    let from_git = runner::git_read(cwd, &["var", "GIT_COMMITTER_IDENT"]).ok().and_then(|s| {
+        let mut it = s.trim().rsplit(' ');
+        let tz = it.next()?;
+        let ts: i64 = it.next()?.parse().ok()?;
+        let sign = if tz.starts_with('-') { -1 } else { 1 };
+        let hh: i64 = tz.get(1..3)?.parse().ok()?;
+        let mm: i64 = tz.get(3..5)?.parse().ok()?;
+        Some(civil_from_days((ts + sign * (hh * 3600 + mm * 60)).div_euclid(86400)))
+    });
+    from_git.unwrap_or_else(|| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        civil_from_days(ts.div_euclid(86400))
+    })
+}
+
 fn user_email(cwd: &Path) -> String {
     runner::git_read(cwd, &["config", "user.email"])
         .map(|s| s.trim().to_string())
@@ -143,11 +196,12 @@ pub fn aggregate(log: &str, email: Option<&str>) -> Heatmap {
     Heatmap { days, max, email: email.map(str::to_string) }
 }
 
-fn fingerprint(cwd: &Path) -> String {
-    let refs =
-        runner::git_read(cwd, &["for-each-ref", "--format=%(objectname)"]).unwrap_or_default();
+/// `None` when refs can't be read: the caller then skips the cache.
+fn fingerprint(cwd: &Path, today: &str) -> Option<String> {
+    let refs = runner::git_read(cwd, &["for-each-ref", "--format=%(objectname)"]).ok()?;
+    // HEAD legitimately fails on an unborn branch.
     let head = runner::git_read(cwd, &["rev-parse", "HEAD"]).unwrap_or_default();
-    format!("{refs}|{}|{}", head.trim(), user_email(cwd))
+    Some(format!("{refs}|{}|{}|{today}", head.trim(), user_email(cwd)))
 }
 
 /// Returns the heatmap and whether it came from the cache (no `git log` run).
@@ -156,11 +210,15 @@ pub fn heatmap_impl(
     all_authors: bool,
     cache: &HeatmapCache,
 ) -> Result<(Heatmap, bool), String> {
-    let fp = fingerprint(cwd);
+    let today = local_today(cwd);
+    let fp = fingerprint(cwd, &today);
     let key = (cwd.to_string_lossy().into_owned(), all_authors);
-    if let Some((f, h)) = cache.0.lock().unwrap().get(&key) {
-        if *f == fp {
-            return Ok((h.clone(), true));
+    if let Some(fp) = &fp {
+        let guard = cache.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((f, h)) = guard.get(&key) {
+            if f == fp {
+                return Ok((h.clone(), true));
+            }
         }
     }
     let email = user_email(cwd);
@@ -170,13 +228,21 @@ pub fn heatmap_impl(
         let log = runner::git_read(
             cwd,
             &[
-                "log", "--all", "--no-merges", "--since=365.days", "--date=short",
-                "--format=%ad%x09%ae",
+                "log", "--all", "--no-merges", "--since=366.days",
+                "--date=format-local:%Y-%m-%d", "--format=%ad%x09%ae",
             ],
         )?;
-        aggregate(&log, if all_authors { None } else { Some(email.as_str()) })
+        let min = add_days(&today, -364);
+        let kept: String = log
+            .lines()
+            .filter(|l| l.split('\t').next().is_some_and(|d| d >= min.as_str()))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        aggregate(&kept, if all_authors { None } else { Some(email.as_str()) })
     };
-    cache.0.lock().unwrap().insert(key, (fp, hm.clone()));
+    if let Some(fp) = fp {
+        cache.0.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (fp, hm.clone()));
+    }
     Ok((hm, false))
 }
 
@@ -194,20 +260,22 @@ pub fn day_commits_impl(
     if !all_authors && email.is_empty() {
         return Ok(vec![]);
     }
-    let since = format!("--since={date} 00:00:00");
-    let until = format!("--until={date} 23:59:59");
+    // Select by author date in local time: window on committer date, then filter on %ad.
+    let since = format!("--since={}", add_days(date, -1));
+    let until = format!("--until={}", add_days(date, 2));
     let out = runner::git_read(
         cwd,
         &[
-            "log", "--all", "--no-merges", &since, &until, "--numstat",
-            "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at",
+            "log", "--all", "--no-merges", &since, &until, "--numstat", "-M",
+            "--date=format-local:%Y-%m-%d",
+            "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
         ],
     )?;
     let mut res = Vec::new();
     for rec in out.split('\x1e').filter(|r| !r.trim().is_empty()) {
         let mut lines = rec.lines();
         let f: Vec<&str> = lines.next().unwrap_or("").split('\x1f').collect();
-        if f.len() < 6 {
+        if f.len() < 7 || f[6].trim() != date {
             continue;
         }
         if !all_authors && !f[4].eq_ignore_ascii_case(&email) {
@@ -273,7 +341,37 @@ mod tests {
     }
 
     fn today(p: &Path) -> String {
-        runner::git(p, &["log", "-1", "--date=short", "--format=%ad"]).unwrap().trim().to_string()
+        local_today(p)
+    }
+
+    #[test]
+    fn date_helpers() {
+        assert_eq!(add_days("2026-03-01", -1), "2026-02-28");
+        assert_eq!(add_days("2024-03-01", -1), "2024-02-29");
+        assert_eq!(add_days("2026-12-31", 1), "2027-01-01");
+        assert_eq!(add_days("2026-10-31", -364), "2025-11-01");
+    }
+
+    #[test]
+    fn author_date_bucket_consistent() {
+        let d = test_repo();
+        let p = d.path();
+        let t = today(p);
+        let y = add_days(&t, -1);
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        runner::git(p, &["add", "-A"]).unwrap();
+        let ok = std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "ieri"])
+            .current_dir(p)
+            .env("GIT_AUTHOR_DATE", format!("{y}T12:00:00"))
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        let (h, _) = heatmap_impl(p, false, &HeatmapCache::default()).unwrap();
+        assert_eq!(h.days, vec![DayCount { date: y.clone(), count: 1 }]);
+        assert_eq!(day_commits_impl(p, &y, false).unwrap().len(), 1);
+        assert!(day_commits_impl(p, &t, false).unwrap().is_empty());
     }
 
     #[test]

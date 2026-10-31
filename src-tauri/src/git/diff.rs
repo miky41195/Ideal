@@ -19,6 +19,7 @@ fn missing_path(e: &str) -> bool {
     e.contains("exists on disk, but not in")
         || e.contains("does not exist in")
         || e.contains("neither on disk nor in the index")
+        || e.contains("but not at stage 0")
 }
 
 /// `git show <spec>` as bytes; `None` if the path is simply absent from that rev/index.
@@ -50,7 +51,37 @@ fn valid_hash(h: &str) -> bool {
     !h.is_empty() && h.len() <= 64 && h.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+fn valid_path(file: &str) -> bool {
+    use std::path::Component;
+    let p = Path::new(file);
+    !file.is_empty()
+        && !p.is_absolute()
+        && p.components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
+fn read_worktree(cwd: &Path, file: &str) -> Result<Option<Vec<u8>>, String> {
+    match std::fs::read(cwd.join(file)) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn crlf_to_lf(b: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(b.len());
+    for (i, c) in b.iter().enumerate() {
+        if *c == b'\r' && b.get(i + 1) == Some(&b'\n') {
+            continue;
+        }
+        out.push(*c);
+    }
+    out
+}
+
 pub fn file_diff_impl(cwd: &Path, file: &str, staged: bool) -> Result<DiffText, String> {
+    if !valid_path(file) {
+        return Err("percorso non valido".into());
+    }
     if staged {
         let old = if rev_exists(cwd, "HEAD") { show(cwd, &format!("HEAD:{file}"))? } else { None };
         let new = show(cwd, &format!(":{file}"))?;
@@ -61,7 +92,13 @@ pub fn file_diff_impl(cwd: &Path, file: &str, staged: bool) -> Result<DiffText, 
             None if rev_exists(cwd, "HEAD") => show(cwd, &format!("HEAD:{file}"))?,
             None => None,
         };
-        let new = std::fs::read(cwd.join(file)).ok();
+        let mut new = read_worktree(cwd, file)?;
+        // autocrlf: index side is LF while the worktree is raw CRLF; compare like with like.
+        if let (Some(o), Some(n)) = (&old, &new) {
+            if !o.contains(&b'\r') && n.contains(&b'\r') {
+                new = Some(crlf_to_lf(n));
+            }
+        }
         Ok(build(old, new))
     }
 }
@@ -74,6 +111,9 @@ pub fn commit_file_diff_impl(
 ) -> Result<DiffText, String> {
     if !valid_hash(hash) {
         return Err("hash non valido".into());
+    }
+    if !valid_path(file) || old_path.is_some_and(|o| !valid_path(o)) {
+        return Err("percorso non valido".into());
     }
     let parent = format!("{hash}^");
     let old = if rev_exists(cwd, &parent) {
@@ -153,5 +193,71 @@ mod tests {
         let h = runner::git(d.path(), &["rev-parse", "HEAD"]).unwrap();
         let r = commit_file_diff_impl(d.path(), h.trim(), "a.txt", None).unwrap();
         assert_eq!((r.old.as_str(), r.new.as_str()), ("uno\n", "due\n"));
+    }
+
+    #[test]
+    fn unstaged_crlf_worktree_normalized() {
+        let d = test_repo();
+        std::fs::write(d.path().join("a.txt"), "uno\ndue\ntre\n").unwrap();
+        commit_all(d.path(), "c1");
+        std::fs::write(d.path().join("a.txt"), "uno\r\nDUE\r\ntre\r\n").unwrap();
+        let r = file_diff_impl(d.path(), "a.txt", false).unwrap();
+        assert!(!r.new.contains('\r'));
+        assert_eq!(r.new, "uno\nDUE\ntre\n");
+    }
+
+    #[test]
+    fn rejects_bad_paths() {
+        let d = test_repo();
+        assert!(file_diff_impl(d.path(), "../x", false).is_err());
+        assert!(file_diff_impl(d.path(), "/etc/passwd", true).is_err());
+        assert!(commit_file_diff_impl(d.path(), "abc", "a/../b", None).is_err());
+    }
+
+    #[test]
+    fn staged_deletion_new_empty() {
+        let d = test_repo();
+        std::fs::write(d.path().join("a.txt"), "uno\n").unwrap();
+        commit_all(d.path(), "c1");
+        runner::git(d.path(), &["rm", "-q", "a.txt"]).unwrap();
+        let r = file_diff_impl(d.path(), "a.txt", true).unwrap();
+        assert_eq!((r.old.as_str(), r.new.as_str()), ("uno\n", ""));
+    }
+
+    #[test]
+    fn commit_file_diff_rename_added_deleted() {
+        let d = test_repo();
+        std::fs::write(d.path().join("old.txt"), "uno\n").unwrap();
+        std::fs::write(d.path().join("gone.txt"), "bye\n").unwrap();
+        commit_all(d.path(), "c1");
+        runner::git(d.path(), &["mv", "old.txt", "new.txt"]).unwrap();
+        runner::git(d.path(), &["rm", "-q", "gone.txt"]).unwrap();
+        std::fs::write(d.path().join("added.txt"), "nuovo\n").unwrap();
+        commit_all(d.path(), "c2");
+        let h = runner::git(d.path(), &["rev-parse", "HEAD"]).unwrap();
+        let h = h.trim();
+        let r = commit_file_diff_impl(d.path(), h, "new.txt", Some("old.txt")).unwrap();
+        assert_eq!((r.old.as_str(), r.new.as_str()), ("uno\n", "uno\n"));
+        let r = commit_file_diff_impl(d.path(), h, "added.txt", None).unwrap();
+        assert_eq!((r.old.as_str(), r.new.as_str()), ("", "nuovo\n"));
+        let r = commit_file_diff_impl(d.path(), h, "gone.txt", None).unwrap();
+        assert_eq!((r.old.as_str(), r.new.as_str()), ("bye\n", ""));
+    }
+
+    #[test]
+    fn conflicted_file_falls_back_to_head() {
+        let d = test_repo();
+        let p = d.path();
+        std::fs::write(p.join("a.txt"), "base\n").unwrap();
+        commit_all(p, "base");
+        runner::git(p, &["checkout", "-q", "-b", "other"]).unwrap();
+        std::fs::write(p.join("a.txt"), "other\n").unwrap();
+        commit_all(p, "other");
+        runner::git(p, &["checkout", "-q", "main"]).unwrap();
+        std::fs::write(p.join("a.txt"), "main\n").unwrap();
+        commit_all(p, "main");
+        let _ = runner::git(p, &["merge", "other"]);
+        let r = file_diff_impl(p, "a.txt", false).unwrap();
+        assert_eq!(r.old, "main\n");
     }
 }
