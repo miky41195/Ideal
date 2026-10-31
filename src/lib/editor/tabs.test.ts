@@ -166,3 +166,46 @@ describe('unsaved / retarget / orphan', () => {
     expect(t.tabs[0].orphaned).toBe(false);
   });
 });
+
+describe('diff and heatmap tabs', () => {
+  const d = { old: 'a', new: 'b', binary: false, langPath: 'src/a.ts' };
+
+  it('openDiff twice with same id keeps one tab and updates content', () => {
+    const t = new Tabs();
+    t.openDiff('diff:staged:src/a.ts', 'a.ts (HEAD ↔ Indice)', d);
+    t.openDiff('diff:staged:src/a.ts', 'a.ts (HEAD ↔ Indice)', { ...d, new: 'c' });
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].kind).toBe('diff');
+    expect(t.tabs[0].diff?.new).toBe('c');
+    expect(t.activePath).toBe('diff:staged:src/a.ts');
+  });
+
+  it('diff tab is never unsaved and save/saveAll ignore it', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.tabs[0].content = 'changed';
+    expect(hasUnsaved(t.tabs)).toBe(false);
+    await t.save('diff:x');
+    await t.saveAll();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('retarget and orphan skip non-file tabs', () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.openHeatmap();
+    t.retarget('diff:x', 'zzz');
+    t.orphan('heatmap:');
+    expect(t.tabs.map((x) => x.path)).toEqual(['diff:x', 'heatmap:']);
+  });
+
+  it('openHeatmap is a singleton', () => {
+    const t = new Tabs();
+    t.openHeatmap();
+    t.openHeatmap();
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].kind).toBe('heatmap');
+    expect(t.tabs[0].name).toBe('Heatmap');
+    expect(t.activePath).toBe('heatmap:');
+  });
+});

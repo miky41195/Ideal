@@ -1,7 +1,20 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
 
+export type TabKind = 'file' | 'diff' | 'heatmap';
+
+export interface DiffData {
+  old: string;
+  new: string;
+  binary: boolean;
+  langPath: string;
+}
+
 export interface EditorTab {
+  /** Tab key: the file path for files, a synthetic id (`diff:...`, `heatmap:`) otherwise. */
   path: string;
+  /** Defaults to 'file'. */
+  kind?: TabKind;
+  diff?: DiffData;
   name: string;
   content: string;
   savedContent: string;
@@ -12,7 +25,9 @@ export interface EditorTab {
   orphaned?: boolean;
 }
 
-export const dirty = (tab: EditorTab): boolean => tab.content !== tab.savedContent;
+export const isFileTab = (tab: EditorTab): boolean => (tab.kind ?? 'file') === 'file';
+
+export const dirty = (tab: EditorTab): boolean => isFileTab(tab) && tab.content !== tab.savedContent;
 
 export const hasUnsaved = (tabs: EditorTab[]): boolean => tabs.some(dirty);
 
@@ -23,6 +38,7 @@ export function remapPath(p: string, from: string, to: string): string | null {
   return null;
 }
 
+const HEATMAP_ID = 'heatmap:';
 const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
 export class Tabs {
@@ -42,6 +58,7 @@ export class Tabs {
   /** A file or folder was renamed/moved on disk: follow it in open tabs. */
   retarget(from: string, to: string): void {
     for (const t of this.tabs) {
+      if (!isFileTab(t)) continue;
       const np = remapPath(t.path, from, to);
       if (np === null) continue;
       const old = t.path;
@@ -59,7 +76,7 @@ export class Tabs {
   /** A file or folder was deleted on disk: close clean tabs, keep dirty ones flagged. */
   orphan(path: string): void {
     for (const t of [...this.tabs]) {
-      if (remapPath(t.path, path, path) === null) continue;
+      if (!isFileTab(t) || remapPath(t.path, path, path) === null) continue;
       if (dirty(t)) {
         t.orphaned = true;
         continue;
@@ -79,8 +96,27 @@ export class Tabs {
     if (this.tabs.some((t) => t.path === path)) this.activePath = path;
   }
 
+  /** Opens (or refreshes and focuses) a read-only diff tab keyed by `id`. */
+  openDiff(id: string, title: string, diff: DiffData): void {
+    const existing = this.tabs.find((t) => t.path === id);
+    if (existing) {
+      existing.diff = diff;
+      existing.name = title;
+    } else {
+      this.tabs.push({ path: id, kind: 'diff', diff, name: title, content: '', savedContent: '', eol: 'lf', readonly: true });
+    }
+    this.activePath = id;
+  }
+
+  openHeatmap(): void {
+    if (!this.tabs.some((t) => t.path === HEATMAP_ID)) {
+      this.tabs.push({ path: HEATMAP_ID, kind: 'heatmap', name: 'Heatmap', content: '', savedContent: '', eol: 'lf', readonly: true });
+    }
+    this.activePath = HEATMAP_ID;
+  }
+
   async openFile(path: string): Promise<void> {
-    if (this.tabs.some((t) => t.path === path)) {
+    if (this.tabs.some((t) => t.path === path && isFileTab(t))) {
       this.activePath = path;
       return;
     }
@@ -88,6 +124,7 @@ export class Tabs {
       const f = await readTextFile(path);
       if (!this.tabs.some((t) => t.path === path)) {
         this.tabs.push({
+          kind: 'file',
           path,
           name: nameOf(path),
           content: f.content,
@@ -123,7 +160,7 @@ export class Tabs {
 
   async save(path: string): Promise<void> {
     const t = this.tabs.find((x) => x.path === path);
-    if (!t || t.readonly) return;
+    if (!t || t.readonly || !isFileTab(t)) return;
     const snapshot = t.content;
     try {
       await writeTextFile(path, snapshot, t.eol);

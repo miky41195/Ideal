@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { onCommand } from '../commands';
-  import { tabs, dirty } from './tabs.svelte';
+  import { tabs, dirty, isFileTab } from './tabs.svelte';
+  import DiffView from '../diff/DiffView.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
@@ -41,10 +42,16 @@
     </div>
   {/if}
   {#if tabs.active}
-    {#if tabs.active.readonly}
-      <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
+    {#if tabs.active.kind === 'diff' && tabs.active.diff}
+      <div class="body"><DiffView diff={tabs.active.diff} /></div>
+    {:else if tabs.active.kind === 'heatmap'}
+      <div class="empty">Heatmap in arrivo</div>
+    {:else}
+      {#if tabs.active.readonly}
+        <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
+      {/if}
+      <div class="body"><CodeEditor tab={tabs.active} {visible} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} /></div>
     {/if}
-    <div class="body"><CodeEditor tab={tabs.active} {visible} isOpen={(p) => tabs.tabs.some((t) => t.path === p)} onchange={(p, c) => tabs.setContent(p, c)} /></div>
   {:else}
     <div class="empty">Nessun file aperto</div>
   {/if}
