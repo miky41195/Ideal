@@ -2,6 +2,7 @@ mod claude;
 mod claude_mem;
 mod fs_cmds;
 mod git;
+mod hub;
 mod plugins;
 mod pty;
 mod settings;
@@ -15,6 +16,7 @@ pub fn run() {
         .manage(pty::PtyManager::new())
         .manage(git::history::HeatmapCache::default())
         .manage(git::watch::GitWatchers::default())
+        .manage(hub::SessionCache::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -55,7 +57,11 @@ pub fn run() {
             claude_mem::mem_search,
             claude_mem::mem_start_worker,
             plugins::plugins_status,
-            plugins::plugin_enable
+            plugins::plugin_enable,
+            hub::sessions_list,
+            hub::session_read,
+            hub::memories_list,
+            hub::docs_list
         ])
         .setup(|app| {
             settings::start_watcher(app.handle().clone());
