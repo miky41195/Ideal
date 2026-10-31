@@ -9,6 +9,8 @@
 
   let { visible = true }: { visible?: boolean } = $props();
 
+  const hasHeatmap = $derived(tabs.tabs.some((t) => t.kind === 'heatmap'));
+
   const confirmClose = (name: string) => ask(`Chiudere ${name} senza salvare?`, { title: 'Ideal', kind: 'warning' });
 
   async function close(path: string) {
@@ -53,13 +55,15 @@
           <CodeEditor tab={tabs.activeFileTab} visible={visible && onFile} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} />
         </div>
       {/if}
-      {#if !onFile}
+      {#if hasHeatmap}
+        <!-- Stays mounted while the tab exists, so the selection survives opening a diff. -->
+        <div class="overlay" class:hidden={tabs.active.kind !== 'heatmap'}>
+          <HeatmapView />
+        </div>
+      {/if}
+      {#if tabs.active.kind === 'diff' && tabs.active.diff}
         <div class="overlay">
-          {#if tabs.active.kind === 'diff' && tabs.active.diff}
-            <DiffView diff={tabs.active.diff} />
-          {:else}
-            <HeatmapView />
-          {/if}
+          <DiffView diff={tabs.active.diff} />
         </div>
       {/if}
     </div>
@@ -147,6 +151,9 @@
     background: var(--bg);
     display: flex;
     flex-direction: column;
+  }
+  .overlay.hidden {
+    visibility: hidden;
   }
   .overlay > :global(*) {
     flex: 1;

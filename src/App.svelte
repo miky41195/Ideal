@@ -18,8 +18,9 @@
   import { settings } from './lib/settings/settings.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { ask } from '@tauri-apps/plugin-dialog';
-  import { initGit } from './lib/git/git-store.svelte';
+  import { initGit, git } from './lib/git/git-store.svelte';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
+  import { onTerminalActivity, debounce } from './lib/terminal/activity';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -28,9 +29,20 @@
     ws.sidebarView = ws.sidebarView === v ? null : v;
   }
 
+  // Refresh git when the workspace mode toggles (no polling).
+  $effect(() => {
+    void ws.mode;
+    if (project) void git.refresh();
+  });
+
   onMount(() => {
     void settings.init();
+    // Claude/shell edits files without going through the editor: refresh once output goes idle.
+    const idleRefresh = debounce(() => void git.refresh(), 1500);
     const offs = [
+      tabs.onSaved(() => void git.refresh()),
+      onTerminalActivity(idleRefresh),
+      idleRefresh.cancel,
       onCommand('toggleMode', () => ws.toggleMode()),
       onCommand('togglePanel', () => ws.togglePanel()),
       onCommand('newClaudeTab', () => {

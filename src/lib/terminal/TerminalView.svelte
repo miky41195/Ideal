@@ -5,6 +5,7 @@
   import '@xterm/xterm/css/xterm.css';
   import { spawnPty, writePty, resizePty, killPty, type PtyKind } from './pty-client';
   import { safeDims } from './dims';
+  import { notifyTerminalActivity } from './activity';
   import { routeKey } from '../keys/router';
   import { dispatch } from '../commands';
   import { settings } from '../settings/settings.svelte';
@@ -86,7 +87,9 @@
       initial.cols,
       initial.rows,
       (s) => {
-        if (!destroyed) t.write(s);
+        if (destroyed) return;
+        t.write(s);
+        notifyTerminalActivity();
       },
       (code) => {
         if (destroyed) return;

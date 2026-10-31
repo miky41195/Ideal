@@ -1,4 +1,4 @@
-import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { gitStatus, gitWatch, type RepoStatus } from './git-client';
 
@@ -76,7 +76,8 @@ export async function initGit(projectPath: string): Promise<() => void> {
   const offs: (() => void)[] = [];
   try {
     offs.push(
-      await listen<string>('git://changed', () => {
+      await getCurrentWebviewWindow().listen<string>('git://changed', (e) => {
+        if (typeof e.payload === 'string' && e.payload !== git.path) return;
         void git.refresh();
         changedListeners.forEach((f) => {
           try {
@@ -85,7 +86,8 @@ export async function initGit(projectPath: string): Promise<() => void> {
             console.warn('git changed listener failed', e);
           }
         });
-      }),);
+      }),
+    );
   } catch (e) {
     console.warn('git listen failed', e);
   }

@@ -19,6 +19,20 @@ beforeEach(() => {
 });
 
 describe('Tabs', () => {
+  it('save notifies onSaved listeners only on success', async () => {
+    const t = new Tabs();
+    const cb = vi.fn();
+    t.onSaved(cb);
+    await t.openFile('C:\p\a.ts');
+    t.setContent('C:\p\a.ts', 'x');
+    await t.save('C:\p\a.ts');
+    expect(cb).toHaveBeenCalledTimes(1);
+    write.mockRejectedValueOnce('boom');
+    t.setContent('C:\p\a.ts', 'y');
+    await t.save('C:\p\a.ts');
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
   it('opening the same path twice yields one tab', async () => {
     const t = new Tabs();
     await t.openFile('C:\\p\\a.ts');

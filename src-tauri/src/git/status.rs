@@ -1,5 +1,5 @@
-use serde::Serialize;
 use crate::git::runner;
+use serde::Serialize;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -34,7 +34,10 @@ fn change(path: &str, orig: Option<&str>, index: char, worktree: char, group: &s
 }
 
 pub fn parse_porcelain_v2(z: &str) -> RepoStatus {
-    let mut st = RepoStatus { is_repo: true, ..Default::default() };
+    let mut st = RepoStatus {
+        is_repo: true,
+        ..Default::default()
+    };
     let mut fields = z.split('\0');
     while let Some(f) = fields.next() {
         if f.is_empty() {
@@ -100,7 +103,13 @@ pub fn parse_porcelain_v2(z: &str) -> RepoStatus {
 pub fn status_impl(cwd: &Path) -> Result<RepoStatus, String> {
     match runner::git_read(
         cwd,
-        &["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+        ],
     ) {
         Ok(out) => Ok(parse_porcelain_v2(&out)),
         Err(e) if e.to_lowercase().contains("not a git repository") => Ok(RepoStatus::default()),
@@ -131,7 +140,8 @@ mod tests {
 
     #[test]
     fn parse_rename_and_spaces() {
-        let z = "2 R. N... 100644 100644 100644 aaa bbb R100 Mio file è.txt\0old name.txt\0? x y.txt\0";
+        let z =
+            "2 R. N... 100644 100644 100644 aaa bbb R100 Mio file è.txt\0old name.txt\0? x y.txt\0";
         let s = parse_porcelain_v2(z);
         assert_eq!(s.files.len(), 2);
         assert_eq!(s.files[0].path, "Mio file è.txt");

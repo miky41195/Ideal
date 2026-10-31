@@ -12,6 +12,7 @@ fn run_bytes(cwd: &Path, args: &[&str], no_locks: bool) -> Result<Vec<u8>, Strin
         .args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_LITERAL_PATHSPECS", "1")
         .env("LC_ALL", "C")
         .env("LANG", "C");
     if no_locks {
@@ -119,6 +120,7 @@ pub fn git_network(cwd: &Path, args: &[&str], timeout: Duration) -> Result<Strin
         .args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_LITERAL_PATHSPECS", "1")
         .env("LC_ALL", "C")
         .env("LANG", "C");
     if ssh_batch_wanted(cwd) {
@@ -131,6 +133,7 @@ pub fn git_network(cwd: &Path, args: &[&str], timeout: Duration) -> Result<Strin
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn timeout_kills_slow_child() {
         let mut c = Command::new("cmd");

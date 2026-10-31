@@ -48,7 +48,14 @@ export class Tabs {
   errors = $state<Record<string, string>>({});
   openError = $state<string | null>(null);
   private lastFilePath: string | null = null;
+  private savedListeners = new Set<() => void>();
   private retargetListeners = new Set<(from: string, to: string) => void>();
+
+  /** Notified after a file was saved successfully (e.g. to refresh git status). */
+  onSaved(fn: () => void): () => void {
+    this.savedListeners.add(fn);
+    return () => this.savedListeners.delete(fn);
+  }
 
   /** Notified after tabs are retargeted (lets editors move per-path caches). */
   onRetarget(fn: (from: string, to: string) => void): () => void {
@@ -188,6 +195,7 @@ export class Tabs {
       t.savedContent = snapshot;
       t.orphaned = false;
       delete this.errors[path];
+      this.savedListeners.forEach((f) => f());
     } catch (e) {
       this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;
     }

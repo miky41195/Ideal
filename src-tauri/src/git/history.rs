@@ -53,9 +53,13 @@ fn valid_hash(h: &str) -> bool {
 fn valid_date(d: &str) -> bool {
     let b = d.as_bytes();
     b.len() == 10
-        && b.iter()
-            .enumerate()
-            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() })
+        && b.iter().enumerate().all(|(i, c)| {
+            if i == 4 || i == 7 {
+                *c == b'-'
+            } else {
+                c.is_ascii_digit()
+            }
+        })
 }
 
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -93,15 +97,19 @@ fn add_days(date: &str, n: i64) -> String {
 
 /// Today's date in the local timezone, via git's own idea of "now" (no chrono dependency).
 fn local_today(cwd: &Path) -> String {
-    let from_git = runner::git_read(cwd, &["var", "GIT_COMMITTER_IDENT"]).ok().and_then(|s| {
-        let mut it = s.trim().rsplit(' ');
-        let tz = it.next()?;
-        let ts: i64 = it.next()?.parse().ok()?;
-        let sign = if tz.starts_with('-') { -1 } else { 1 };
-        let hh: i64 = tz.get(1..3)?.parse().ok()?;
-        let mm: i64 = tz.get(3..5)?.parse().ok()?;
-        Some(civil_from_days((ts + sign * (hh * 3600 + mm * 60)).div_euclid(86400)))
-    });
+    let from_git = runner::git_read(cwd, &["var", "GIT_COMMITTER_IDENT"])
+        .ok()
+        .and_then(|s| {
+            let mut it = s.trim().rsplit(' ');
+            let tz = it.next()?;
+            let ts: i64 = it.next()?.parse().ok()?;
+            let sign = if tz.starts_with('-') { -1 } else { 1 };
+            let hh: i64 = tz.get(1..3)?.parse().ok()?;
+            let mm: i64 = tz.get(3..5)?.parse().ok()?;
+            Some(civil_from_days(
+                (ts + sign * (hh * 3600 + mm * 60)).div_euclid(86400),
+            ))
+        });
     from_git.unwrap_or_else(|| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -127,7 +135,9 @@ fn parse_numstat_z(z: &str) -> HashMap<String, (Option<u32>, Option<u32>)> {
             continue;
         }
         let mut p = tok.splitn(3, '\t');
-        let (Some(a), Some(d), Some(path)) = (p.next(), p.next(), p.next()) else { continue };
+        let (Some(a), Some(d), Some(path)) = (p.next(), p.next(), p.next()) else {
+            continue;
+        };
         let path = if path.is_empty() {
             let _old = it.next();
             it.next().unwrap_or("").to_string()
@@ -163,13 +173,22 @@ pub fn commit_files_impl(cwd: &Path, hash: &str) -> Result<Vec<CommitFile>, Stri
         return Err("hash non valido".into());
     }
     let num = runner::git_read(cwd, &["show", "--format=", "--numstat", "-z", "-M", hash])?;
-    let ns = runner::git_read(cwd, &["show", "--format=", "--name-status", "-z", "-M", hash])?;
+    let ns = runner::git_read(
+        cwd,
+        &["show", "--format=", "--name-status", "-z", "-M", hash],
+    )?;
     let stats = parse_numstat_z(&num);
     Ok(parse_name_status_z(&ns)
         .into_iter()
         .map(|(status, path, old_path)| {
             let (additions, deletions) = stats.get(&path).copied().unwrap_or((None, None));
-            CommitFile { path, old_path, status, additions, deletions }
+            CommitFile {
+                path,
+                old_path,
+                status,
+                additions,
+                deletions,
+            }
         })
         .collect())
 }
@@ -179,7 +198,9 @@ pub fn commit_files_impl(cwd: &Path, hash: &str) -> Result<Vec<CommitFile>, Stri
 pub fn aggregate(log: &str, email: Option<&str>) -> Heatmap {
     let mut days: BTreeMap<&str, u32> = BTreeMap::new();
     for line in log.lines() {
-        let Some((date, mail)) = line.split_once('\t') else { continue };
+        let Some((date, mail)) = line.split_once('\t') else {
+            continue;
+        };
         if date.is_empty() {
             continue;
         }
@@ -190,10 +211,17 @@ pub fn aggregate(log: &str, email: Option<&str>) -> Heatmap {
     }
     let days: Vec<DayCount> = days
         .into_iter()
-        .map(|(date, count)| DayCount { date: date.to_string(), count })
+        .map(|(date, count)| DayCount {
+            date: date.to_string(),
+            count,
+        })
         .collect();
     let max = days.iter().map(|d| d.count).max().unwrap_or(0);
-    Heatmap { days, max, email: email.map(str::to_string) }
+    Heatmap {
+        days,
+        max,
+        email: email.map(str::to_string),
+    }
 }
 
 /// `None` when refs can't be read: the caller then skips the cache.
@@ -201,7 +229,11 @@ fn fingerprint(cwd: &Path, today: &str) -> Option<String> {
     let refs = runner::git_read(cwd, &["for-each-ref", "--format=%(objectname)"]).ok()?;
     // HEAD legitimately fails on an unborn branch.
     let head = runner::git_read(cwd, &["rev-parse", "HEAD"]).unwrap_or_default();
-    Some(format!("{refs}|{}|{}|{today}", head.trim(), user_email(cwd)))
+    Some(format!(
+        "{refs}|{}|{}|{today}",
+        head.trim(),
+        user_email(cwd)
+    ))
 }
 
 /// Returns the heatmap and whether it came from the cache (no `git log` run).
@@ -228,8 +260,12 @@ pub fn heatmap_impl(
         let log = runner::git_read(
             cwd,
             &[
-                "log", "--all", "--no-merges", "--since=400.days",
-                "--date=format-local:%Y-%m-%d", "--format=%ad%x09%ae",
+                "log",
+                "--all",
+                "--no-merges",
+                "--since=400.days",
+                "--date=format-local:%Y-%m-%d",
+                "--format=%ad%x09%ae",
             ],
         )?;
         let min = add_days(&today, -364);
@@ -238,10 +274,21 @@ pub fn heatmap_impl(
             .filter(|l| l.split('\t').next().is_some_and(|d| d >= min.as_str()))
             .map(|l| format!("{l}\n"))
             .collect();
-        aggregate(&kept, if all_authors { None } else { Some(email.as_str()) })
+        aggregate(
+            &kept,
+            if all_authors {
+                None
+            } else {
+                Some(email.as_str())
+            },
+        )
     };
     if let Some(fp) = fp {
-        cache.0.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (fp, hm.clone()));
+        cache
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, (fp, hm.clone()));
     }
     Ok((hm, false))
 }
@@ -264,8 +311,12 @@ pub fn day_commits_impl(
     let sel = runner::git_read(
         cwd,
         &[
-            "log", "--all", "--no-merges", "--since=400.days",
-            "--date=format-local:%Y-%m-%d", "--format=%H%x09%ad%x09%ae",
+            "log",
+            "--all",
+            "--no-merges",
+            "--since=400.days",
+            "--date=format-local:%Y-%m-%d",
+            "--format=%H%x09%ad%x09%ae",
         ],
     )?;
     let hashes: Vec<&str> = sel
@@ -280,7 +331,11 @@ pub fn day_commits_impl(
         return Ok(vec![]);
     }
     let mut args: Vec<&str> = vec![
-        "log", "--no-walk=unsorted", "--numstat", "-M", "--date=format-local:%Y-%m-%d",
+        "log",
+        "--no-walk=unsorted",
+        "--numstat",
+        "-M",
+        "--date=format-local:%Y-%m-%d",
         "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
     ];
     args.extend(hashes.iter().copied());
@@ -383,7 +438,13 @@ mod tests {
             .success();
         assert!(ok);
         let (h, _) = heatmap_impl(p, false, &HeatmapCache::default()).unwrap();
-        assert_eq!(h.days, vec![DayCount { date: y.clone(), count: 1 }]);
+        assert_eq!(
+            h.days,
+            vec![DayCount {
+                date: y.clone(),
+                count: 1
+            }]
+        );
         assert_eq!(day_commits_impl(p, &y, false).unwrap().len(), 1);
         assert!(day_commits_impl(p, &t, false).unwrap().is_empty());
     }
@@ -395,8 +456,14 @@ mod tests {
         assert_eq!(
             h.days,
             vec![
-                DayCount { date: "2026-10-30".into(), count: 1 },
-                DayCount { date: "2026-10-31".into(), count: 1 }
+                DayCount {
+                    date: "2026-10-30".into(),
+                    count: 1
+                },
+                DayCount {
+                    date: "2026-10-31".into(),
+                    count: 1
+                }
             ]
         );
         assert_eq!(h.max, 1);
@@ -408,7 +475,13 @@ mod tests {
         let log = "2026-10-30\ta@x\n2026-10-30\tb@x\n2026-10-29\ta@x\n";
         let h = aggregate(log, None);
         assert_eq!(h.days.len(), 2);
-        assert_eq!(h.days[1], DayCount { date: "2026-10-30".into(), count: 2 });
+        assert_eq!(
+            h.days[1],
+            DayCount {
+                date: "2026-10-30".into(),
+                count: 2
+            }
+        );
         assert_eq!(h.max, 2);
         assert_eq!(h.email, None);
     }
@@ -428,7 +501,10 @@ mod tests {
         commit_file(d.path(), "a.txt", "2", "c2");
         let (h, _) = heatmap_impl(d.path(), false, &HeatmapCache::default()).unwrap();
         let t = today(d.path());
-        assert_eq!(h.days.iter().find(|x| x.date == t).map(|x| x.count), Some(2));
+        assert_eq!(
+            h.days.iter().find(|x| x.date == t).map(|x| x.count),
+            Some(2)
+        );
         assert_eq!(h.max, 2);
         assert_eq!(h.email.as_deref(), Some("me@ideal.dev"));
     }
@@ -449,7 +525,13 @@ mod tests {
             .success();
         assert!(ok);
         let (h, _) = heatmap_impl(p, false, &HeatmapCache::default()).unwrap();
-        assert_eq!(h.days, vec![DayCount { date: old.clone(), count: 1 }]);
+        assert_eq!(
+            h.days,
+            vec![DayCount {
+                date: old.clone(),
+                count: 1
+            }]
+        );
         let v = day_commits_impl(p, &old, false).unwrap();
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].subject, "vecchio");
@@ -501,7 +583,10 @@ mod tests {
         let h = runner::git(d.path(), &["rev-parse", "HEAD"]).unwrap();
         let v = commit_files_impl(d.path(), h.trim()).unwrap();
         let bin = v.iter().find(|f| f.path == "img.bin").unwrap();
-        assert_eq!((bin.status.as_str(), bin.additions, bin.deletions), ("A", None, None));
+        assert_eq!(
+            (bin.status.as_str(), bin.additions, bin.deletions),
+            ("A", None, None)
+        );
         let ren = v.iter().find(|f| f.path == "new name.txt").unwrap();
         assert_eq!(ren.status, "R");
         assert_eq!(ren.old_path.as_deref(), Some("old name.txt"));

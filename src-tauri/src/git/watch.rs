@@ -2,7 +2,7 @@ use crate::git::runner;
 use notify::{RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex};
+use std::sync::{Mutex, mpsc};
 use std::time::Duration;
 use tauri::{Emitter, EventTarget, Manager, Runtime, WebviewWindow};
 
@@ -57,7 +57,9 @@ pub fn git_watch<R: Runtime>(
         .map_err(|e| e.to_string())?;
     let refs = git_dir.join("refs");
     if refs.is_dir() {
-        watcher.watch(&refs, RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+        watcher
+            .watch(&refs, RecursiveMode::Recursive)
+            .map_err(|e| e.to_string())?;
     }
     let app = window.app_handle().clone();
     let target = label.clone();

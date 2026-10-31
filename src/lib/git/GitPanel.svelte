@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { git } from './git-store.svelte';
   import {
@@ -104,10 +105,12 @@
     }
   }
 
+  onMount(() => void git.refresh());
+
   async function openDiff(f: FileChange) {
     const staged = f.group === 'staged';
     try {
-      const d = await gitFileDiff(git.path, f.path, staged);
+      const d = await gitFileDiff(git.path, f.path, staged, staged ? f.origPath : null);
       tabs.openDiff(
         `diff:${staged ? 'staged' : 'unstaged'}:${f.path}`,
         diffTitle(f.path, staged ? STAGED_LABEL : UNSTAGED_LABEL),

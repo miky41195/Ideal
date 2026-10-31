@@ -255,6 +255,19 @@ mod tests {
     }
 
     #[test]
+    fn discard_pathspec_is_literal_not_glob() {
+        let d = test_repo();
+        let p = d.path();
+        commit_file(p, "a[1].txt", "orig");
+        commit_file(p, "a1.txt", "orig");
+        fs::write(p.join("a[1].txt"), "changed").unwrap();
+        fs::write(p.join("a1.txt"), "changed").unwrap();
+        discard_with(p, &s("a[1].txt"), |_| panic!("remover must not run")).unwrap();
+        assert_eq!(fs::read_to_string(p.join("a[1].txt")).unwrap(), "orig");
+        assert_eq!(fs::read_to_string(p.join("a1.txt")).unwrap(), "changed");
+    }
+
+    #[test]
     fn discard_untracked_uses_remover() {
         let d = test_repo();
         let p = d.path();

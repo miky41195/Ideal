@@ -72,8 +72,8 @@ export const gitCreateBranch = (path: string, name: string) =>
 export const gitFetch = (path: string) => invoke<void>('git_fetch', { path });
 export const gitPull = (path: string) => invoke<void>('git_pull', { path });
 export const gitPush = (path: string) => invoke<void>('git_push', { path });
-export const gitFileDiff = (path: string, file: string, staged: boolean) =>
-  invoke<DiffText>('git_file_diff', { path, file, staged });
+export const gitFileDiff = (path: string, file: string, staged: boolean, oldPath: string | null = null) =>
+  invoke<DiffText>('git_file_diff', { path, file, staged, oldPath });
 export const gitCommitFiles = (path: string, hash: string) =>
   invoke<CommitFile[]>('git_commit_files', { path, hash });
 export const gitCommitFileDiff = (path: string, hash: string, file: string, oldPath: string | null) =>

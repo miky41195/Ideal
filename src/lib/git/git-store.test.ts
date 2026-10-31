@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./git-client', () => ({ gitStatus: vi.fn(), gitWatch: vi.fn() }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getCurrentWebviewWindow: () => ({ listen: vi.fn(async () => () => {}) }),
+}));
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({ onFocusChanged: vi.fn(async () => () => {}) }),
 }));
