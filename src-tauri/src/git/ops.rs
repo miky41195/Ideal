@@ -1,4 +1,10 @@
-use crate::git::{runner::git, status::status_impl};
+use crate::git::{
+    runner::{git, git_network},
+    status::status_impl,
+};
+use std::time::Duration;
+
+const NET_TIMEOUT: Duration = Duration::from_secs(120);
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -35,7 +41,7 @@ pub fn unstage_impl(cwd: &Path, files: &[String]) -> Result<(), String> {
     let head: &[&str] = if has_head(cwd) {
         &["restore", "--staged"]
     } else {
-        &["rm", "--cached", "-r", "-q"]
+        &["rm", "--cached", "-f", "-r", "-q"]
     };
     git(cwd, &with_files(head, files)).map(|_| ())
 }
@@ -49,7 +55,11 @@ pub fn discard_with(
         return Ok(());
     }
     let st = status_impl(cwd)?;
-    let is_untracked = |f: &String| st.files.iter().any(|c| c.group == "untracked" && &c.path == f);
+    let is_untracked = |f: &String| {
+        st.files
+            .iter()
+            .any(|c| c.group == "untracked" && &c.path == f)
+    };
     let tracked: Vec<String> = files.iter().filter(|f| !is_untracked(f)).cloned().collect();
     if !tracked.is_empty() {
         git(cwd, &with_files(&["restore", "--worktree"], &tracked))?;
@@ -67,13 +77,19 @@ pub fn commit_impl(cwd: &Path, message: &str) -> Result<String, String> {
         return Err("messaggio di commit vuoto".to_string());
     }
     git(cwd, &["commit", "-m", msg])?;
-    Ok(git(cwd, &["rev-parse", "--short", "HEAD"])?.trim().to_string())
+    Ok(git(cwd, &["rev-parse", "--short", "HEAD"])?
+        .trim()
+        .to_string())
 }
 
 pub fn branches_impl(cwd: &Path) -> Result<Vec<Branch>, String> {
     let out = git(
         cwd,
-        &["for-each-ref", "refs/heads", "--format=%(HEAD)%09%(refname:short)%09%(upstream:short)"],
+        &[
+            "for-each-ref",
+            "refs/heads",
+            "--format=%(HEAD)%09%(refname:short)%09%(upstream:short)",
+        ],
     )?;
     Ok(out
         .lines()
@@ -85,38 +101,56 @@ pub fn branches_impl(cwd: &Path) -> Result<Vec<Branch>, String> {
             Some(Branch {
                 name,
                 current: head == "*",
-                upstream: if up.is_empty() { None } else { Some(up.to_string()) },
+                upstream: if up.is_empty() {
+                    None
+                } else {
+                    Some(up.to_string())
+                },
             })
         })
         .collect())
 }
 
+fn valid_branch(cwd: &Path, name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.contains("@{")
+        && git(cwd, &["check-ref-format", "--branch", name]).is_ok()
+}
+
 pub fn switch_impl(cwd: &Path, name: &str) -> Result<(), String> {
+    if !valid_branch(cwd, name) {
+        return Err("nome branch non valido".to_string());
+    }
     git(cwd, &["switch", name]).map(|_| ())
 }
 
 pub fn create_branch_impl(cwd: &Path, name: &str) -> Result<(), String> {
     let name = name.trim();
-    if name.is_empty() || git(cwd, &["check-ref-format", "--branch", name]).is_err() {
+    if !valid_branch(cwd, name) {
         return Err("nome branch non valido".to_string());
     }
     git(cwd, &["switch", "-c", name]).map(|_| ())
 }
 
 pub fn fetch_impl(cwd: &Path) -> Result<(), String> {
-    git(cwd, &["fetch", "--all", "--prune"]).map(|_| ())
+    git_network(cwd, &["fetch", "--all", "--prune"], NET_TIMEOUT).map(|_| ())
 }
 
 pub fn pull_impl(cwd: &Path) -> Result<(), String> {
-    git(cwd, &["pull", "--ff-only"]).map(|_| ())
+    git_network(cwd, &["pull", "--ff-only"], NET_TIMEOUT).map(|_| ())
 }
 
 pub fn push_impl(cwd: &Path) -> Result<(), String> {
-    let has_upstream = git(cwd, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).is_ok();
+    let has_upstream = git(
+        cwd,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )
+    .is_ok();
     if has_upstream {
-        git(cwd, &["push"]).map(|_| ())
+        git_network(cwd, &["push"], NET_TIMEOUT).map(|_| ())
     } else {
-        git(cwd, &["push", "-u", "origin", "HEAD"]).map(|_| ())
+        git_network(cwd, &["push", "-u", "origin", "HEAD"], NET_TIMEOUT).map(|_| ())
     }
 }
 
@@ -132,7 +166,9 @@ pub fn git_unstage(path: String, files: Vec<String>) -> Result<(), String> {
 
 #[tauri::command(async)]
 pub fn git_discard(path: String, files: Vec<String>) -> Result<(), String> {
-    discard_with(Path::new(&path), &files, |p| trash::delete(p).map_err(|e| e.to_string()))
+    discard_with(Path::new(&path), &files, |p| {
+        trash::delete(p).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command(async)]
@@ -235,9 +271,56 @@ mod tests {
     }
 
     #[test]
+    fn unstage_unborn_after_edit() {
+        let d = test_repo();
+        let p = d.path();
+        fs::write(p.join("a.txt"), "1").unwrap();
+        stage_impl(p, &s("a.txt")).unwrap();
+        fs::write(p.join("a.txt"), "edited").unwrap();
+        unstage_impl(p, &s("a.txt")).unwrap();
+        assert_eq!(fs::read_to_string(p.join("a.txt")).unwrap(), "edited");
+        assert_eq!(status_impl(p).unwrap().files[0].group, "untracked");
+    }
+
+    #[test]
+    fn discard_leaves_staged_content() {
+        let d = test_repo();
+        let p = d.path();
+        commit_file(p, "a.txt", "v0");
+        fs::write(p.join("a.txt"), "v1").unwrap();
+        stage_impl(p, &s("a.txt")).unwrap();
+        fs::write(p.join("a.txt"), "v2").unwrap();
+        discard_with(p, &s("a.txt"), |_| panic!("no")).unwrap();
+        assert_eq!(fs::read_to_string(p.join("a.txt")).unwrap(), "v1");
+        assert_eq!(
+            git(p, &["diff", "--cached", "--name-only"]).unwrap().trim(),
+            "a.txt"
+        );
+    }
+
+    #[test]
+    fn option_like_branch_names_rejected() {
+        let d = test_repo();
+        commit_file(d.path(), "a.txt", "1");
+        for n in ["-f", "--detach", "x@{u}"] {
+            assert_eq!(
+                switch_impl(d.path(), n).unwrap_err(),
+                "nome branch non valido"
+            );
+            assert_eq!(
+                create_branch_impl(d.path(), n).unwrap_err(),
+                "nome branch non valido"
+            );
+        }
+    }
+
+    #[test]
     fn commit_empty_message_rejected() {
         let d = test_repo();
-        assert_eq!(commit_impl(d.path(), "  \n ").unwrap_err(), "messaggio di commit vuoto");
+        assert_eq!(
+            commit_impl(d.path(), "  \n ").unwrap_err(),
+            "messaggio di commit vuoto"
+        );
     }
 
     #[test]
@@ -248,7 +331,10 @@ mod tests {
         stage_impl(p, &s("a.txt")).unwrap();
         let h = commit_impl(p, "  hello world \n").unwrap();
         assert!(h.len() >= 7 && h.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_eq!(git(p, &["log", "-1", "--format=%s"]).unwrap().trim(), "hello world");
+        assert_eq!(
+            git(p, &["log", "-1", "--format=%s"]).unwrap().trim(),
+            "hello world"
+        );
     }
 
     #[test]
@@ -268,14 +354,20 @@ mod tests {
         switch_impl(p, "main").unwrap();
         let b = branches_impl(p).unwrap();
         assert!(b.iter().any(|b| b.name == "main" && b.current));
-        assert!(b.iter().any(|b| b.name == "feat/x" && !b.current && b.upstream.is_none()));
+        assert!(
+            b.iter()
+                .any(|b| b.name == "feat/x" && !b.current && b.upstream.is_none())
+        );
     }
 
     #[test]
     fn invalid_branch_name_rejected() {
         let d = test_repo();
         commit_file(d.path(), "a.txt", "1");
-        assert_eq!(create_branch_impl(d.path(), "a..b").unwrap_err(), "nome branch non valido");
+        assert_eq!(
+            create_branch_impl(d.path(), "a..b").unwrap_err(),
+            "nome branch non valido"
+        );
     }
 
     #[test]
