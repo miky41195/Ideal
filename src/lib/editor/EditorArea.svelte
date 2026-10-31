@@ -28,7 +28,7 @@
   <div class="strip" role="tablist">
     {#each tabs.tabs as t (t.path)}
       <div class="tab" class:active={t.path === tabs.activePath} role="presentation">
-        <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={t.path} onclick={() => tabs.select(t.path)}>
+        <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={isFileTab(t) ? t.path : t.name} onclick={() => tabs.select(t.path)}>
           {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"> ●</span>{/if}
         </button>
         <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}>×</button>
@@ -42,16 +42,26 @@
     </div>
   {/if}
   {#if tabs.active}
-    {#if tabs.active.kind === 'diff' && tabs.active.diff}
-      <div class="body"><DiffView diff={tabs.active.diff} /></div>
-    {:else if tabs.active.kind === 'heatmap'}
-      <div class="empty">Heatmap in arrivo</div>
-    {:else}
-      {#if tabs.active.readonly}
-        <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
-      {/if}
-      <div class="body"><CodeEditor tab={tabs.active} {visible} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} /></div>
+    {@const onFile = tabs.active === tabs.activeFileTab}
+    {#if onFile && tabs.active.readonly}
+      <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
     {/if}
+    <div class="main">
+      {#if tabs.activeFileTab}
+        <div class="body" class:hidden={!onFile}>
+          <CodeEditor tab={tabs.activeFileTab} visible={visible && onFile} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} />
+        </div>
+      {/if}
+      {#if !onFile}
+        <div class="overlay">
+          {#if tabs.active.kind === 'diff' && tabs.active.diff}
+            <DiffView diff={tabs.active.diff} />
+          {:else}
+            <div class="empty">Heatmap in arrivo</div>
+          {/if}
+        </div>
+      {/if}
+    </div>
   {:else}
     <div class="empty">Nessun file aperto</div>
   {/if}
@@ -118,7 +128,26 @@
     color: var(--text-dim);
     border-bottom: 1px solid var(--border);
   }
+  .main {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
   .body {
+    position: absolute;
+    inset: 0;
+  }
+  .body.hidden {
+    visibility: hidden;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+  .overlay > :global(*) {
     flex: 1;
     min-height: 0;
   }

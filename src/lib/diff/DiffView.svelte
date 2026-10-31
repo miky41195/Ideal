@@ -1,8 +1,7 @@
 <script lang="ts">
   import { EditorState, type Extension } from '@codemirror/state';
   import { EditorView, lineNumbers } from '@codemirror/view';
-  import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-  import { oneDark } from '@codemirror/theme-one-dark';
+  import { baseTheme, highlightingExt } from '../editor/theme';
   import { MergeView } from '@codemirror/merge';
   import { languageFor } from '../editor/languages';
   import { settings } from '../settings/settings.svelte';
@@ -11,14 +10,6 @@
   let { diff }: { diff: DiffData } = $props();
 
   let host: HTMLDivElement | undefined = $state();
-
-  const theme = (fontSize: number, fontFamily: string) =>
-    EditorView.theme({
-      '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: `${fontSize}px` },
-      '.cm-scroller': { fontFamily, lineHeight: '1.5' },
-      '.cm-gutters': { backgroundColor: 'var(--panel)', color: 'var(--text-dim)', border: 'none' },
-      '&.cm-focused': { outline: 'none' },
-    });
 
   $effect(() => {
     const d = diff;
@@ -34,9 +25,8 @@
       if (cancelled) return;
       const base: Extension[] = [
         lineNumbers(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        oneDark,
-        theme(fontSize, fontFamily),
+        ...highlightingExt,
+        baseTheme(fontSize, fontFamily),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
         ...(support ? [support] : []),

@@ -47,6 +47,7 @@ export class Tabs {
   /** Save errors, per path; cleared only by that path's successful save or close. */
   errors = $state<Record<string, string>>({});
   openError = $state<string | null>(null);
+  private lastFilePath: string | null = null;
   private retargetListeners = new Set<(from: string, to: string) => void>();
 
   /** Notified after tabs are retargeted (lets editors move per-path caches). */
@@ -69,6 +70,7 @@ export class Tabs {
         delete this.errors[old];
       }
       if (this.activePath === old) this.activePath = np;
+      if (this.lastFilePath === old) this.lastFilePath = np;
     }
     for (const fn of this.retargetListeners) fn(from, to);
   }
@@ -92,12 +94,28 @@ export class Tabs {
     return this.tabs.find((t) => t.path === this.activePath);
   }
 
+  /** Active tab if it is a file, else the last active file tab (so the editor keeps its state behind diff/heatmap tabs). */
+  get activeFileTab(): EditorTab | undefined {
+    const a = this.active;
+    if (a && isFileTab(a)) return a;
+    return this.tabs.find((t) => t.path === this.lastFilePath && isFileTab(t)) ?? this.tabs.find(isFileTab);
+  }
+
+  private noteFile(): void {
+    const a = this.active;
+    if (a && isFileTab(a)) this.lastFilePath = a.path;
+  }
+
   select(path: string): void {
-    if (this.tabs.some((t) => t.path === path)) this.activePath = path;
+    if (this.tabs.some((t) => t.path === path)) {
+      this.noteFile();
+      this.activePath = path;
+    }
   }
 
   /** Opens (or refreshes and focuses) a read-only diff tab keyed by `id`. */
   openDiff(id: string, title: string, diff: DiffData): void {
+    this.noteFile();
     const existing = this.tabs.find((t) => t.path === id);
     if (existing) {
       existing.diff = diff;
@@ -109,6 +127,7 @@ export class Tabs {
   }
 
   openHeatmap(): void {
+    this.noteFile();
     if (!this.tabs.some((t) => t.path === HEATMAP_ID)) {
       this.tabs.push({ path: HEATMAP_ID, kind: 'heatmap', name: 'Heatmap', content: '', savedContent: '', eol: 'lf', readonly: true });
     }
@@ -117,12 +136,14 @@ export class Tabs {
 
   async openFile(path: string): Promise<void> {
     if (this.tabs.some((t) => t.path === path && isFileTab(t))) {
+      this.noteFile();
       this.activePath = path;
       return;
     }
+    this.noteFile();
     try {
       const f = await readTextFile(path);
-      if (!this.tabs.some((t) => t.path === path)) {
+      if (!this.tabs.some((t) => t.path === path && isFileTab(t))) {
         this.tabs.push({
           kind: 'file',
           path,

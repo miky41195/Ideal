@@ -209,3 +209,40 @@ describe('diff and heatmap tabs', () => {
     expect(t.activePath).toBe('heatmap:');
   });
 });
+
+describe('file/diff interplay', () => {
+  const d = { old: 'a', new: 'b', binary: false, langPath: 'a.ts' };
+
+  it('activeFileTab falls back to the last active file tab behind a diff', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\p\a.ts');
+    await t.openFile('C:\p\b.ts');
+    await t.openFile('C:\p\a.ts');
+    t.openDiff('diff:x', 'x', d);
+    expect(t.active?.kind).toBe('diff');
+    expect(t.activeFileTab?.path).toBe('C:\p\a.ts');
+    t.openHeatmap();
+    expect(t.activeFileTab?.path).toBe('C:\p\a.ts');
+    t.select('C:\p\b.ts');
+    expect(t.activeFileTab?.path).toBe('C:\p\b.ts');
+  });
+
+  it('openFile is unaffected by an existing diff tab', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    await t.openFile('C:\p\a.ts');
+    expect(t.tabs).toHaveLength(2);
+    expect(t.active?.kind).toBe('file');
+  });
+
+  it('closeTab on a diff tab never prompts; setContent ignored', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.setContent('diff:x', 'zzz');
+    expect(t.tabs[0].content).toBe('');
+    const confirm = vi.fn().mockResolvedValue(false);
+    await t.closeTab('diff:x', confirm);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(t.tabs).toHaveLength(0);
+  });
+});
