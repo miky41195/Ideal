@@ -1449,6 +1449,7 @@ dependencies = [
  "tauri-build",
  "tempfile",
  "which",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
