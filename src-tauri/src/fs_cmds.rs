@@ -81,6 +81,8 @@ fn readonly(reason: &str, eol: &str) -> TextFile {
     }
 }
 
+/// Mixed line endings: any CRLF makes the file "crlf", so it is normalized to
+/// LF in memory and saved back as all-CRLF (lone carriage return is left untouched).
 pub fn read_text_file_impl(path: &Path) -> Result<TextFile, String> {
     let meta = fs::metadata(path).map_err(err)?;
     if meta.len() > MAX_READ_BYTES {
@@ -98,24 +100,41 @@ pub fn read_text_file_impl(path: &Path) -> Result<TextFile, String> {
     }
 }
 
-/// Atomic write: temp file in the same directory, then rename over the target
-/// (std::fs::rename replaces an existing file on Windows).
+/// Atomic write: unique temp file in the same directory, then rename over the
+/// target. Guards: refuses read-only, binary, non-UTF-8 or >10 MB existing files.
+/// Note: replacing via rename drops the old file's attributes/ACLs and, if the
+/// target is a symlink, replaces the link itself rather than its destination.
 pub fn write_text_file_impl(path: &Path, content: &str, eol: &str) -> Result<(), String> {
-    let data = apply_eol(&normalize_to_lf(content), eol);
-    let file_name = path.file_name().ok_or("percorso non valido")?.to_string_lossy();
-    let tmp = path.with_file_name(format!(".{}.ideal-tmp-{}", file_name, std::process::id()));
-    let result = (|| -> std::io::Result<()> {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(data.as_bytes())?;
-        f.sync_all()?;
-        drop(f);
-        fs::rename(&tmp, path)
-    })();
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
-        return Err(err(e));
+    if let Ok(meta) = fs::metadata(path) {
+        if meta.permissions().readonly() {
+            return Err("file di sola lettura".to_string());
+        }
+        if meta.is_file() {
+            if meta.len() > MAX_READ_BYTES {
+                return Err("troppo grande".to_string());
+            }
+            classify_bytes(fs::read(path).map_err(err)?).map_err(|r| r.to_string())?;
+        }
     }
-    Ok(())
+    let data = apply_eol(&normalize_to_lf(content), eol);
+    let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    path.file_name().ok_or("percorso non valido")?;
+    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(err)?;
+    tmp.write_all(data.as_bytes()).map_err(err)?;
+    tmp.as_file().sync_all().map_err(err)?;
+    // On Windows a rename can transiently fail under contention; retry briefly.
+    let mut last = None;
+    for _ in 0..20 {
+        match tmp.persist(path) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                tmp = e.file;
+                last = Some(e.error);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    }
+    Err(err(last.unwrap()))
 }
 
 pub fn create_file_impl(path: &Path) -> Result<(), String> {
@@ -127,7 +146,9 @@ pub fn create_dir_impl(path: &Path) -> Result<(), String> {
 }
 
 pub fn rename_path_impl(from: &Path, to: &Path) -> Result<(), String> {
-    if to.exists() {
+    let case_only = from != to
+        && from.to_string_lossy().to_lowercase() == to.to_string_lossy().to_lowercase();
+    if !case_only && to.exists() {
         return Err("la destinazione esiste già".to_string());
     }
     fs::rename(from, to).map_err(err)
@@ -138,7 +159,7 @@ pub fn delete_path_with(
     path: &Path,
     remover: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
-    if !path.exists() {
+    if fs::symlink_metadata(path).is_err() {
         return Err("percorso inesistente".to_string());
     }
     remover(path)
@@ -299,6 +320,74 @@ mod tests {
         let sub = d.path().join("s");
         create_dir_impl(&sub).unwrap();
         assert!(create_dir_impl(&sub).is_err());
+    }
+
+    #[test]
+    fn write_refuses_binary_nonutf8_large_readonly() {
+        let d = tempdir().unwrap();
+        let bin = d.path().join("b");
+        fs::write(&bin, [0u8, 1]).unwrap();
+        assert_eq!(write_text_file_impl(&bin, "x", "lf"), Err("binario".to_string()));
+        assert_eq!(fs::read(&bin).unwrap(), [0u8, 1]);
+        let l1 = d.path().join("l");
+        fs::write(&l1, [0xE8u8]).unwrap();
+        assert_eq!(write_text_file_impl(&l1, "x", "lf"), Err("non UTF-8".to_string()));
+        let big = d.path().join("big");
+        fs::File::create(&big).unwrap().set_len(MAX_READ_BYTES + 1).unwrap();
+        assert_eq!(write_text_file_impl(&big, "x", "lf"), Err("troppo grande".to_string()));
+        let ro = d.path().join("ro");
+        fs::write(&ro, "a").unwrap();
+        let mut perm = fs::metadata(&ro).unwrap().permissions();
+        perm.set_readonly(true);
+        fs::set_permissions(&ro, perm.clone()).unwrap();
+        assert_eq!(write_text_file_impl(&ro, "x", "lf"), Err("file di sola lettura".to_string()));
+        #[allow(clippy::permissions_set_readonly_false)]
+        perm.set_readonly(false);
+        fs::set_permissions(&ro, perm).unwrap();
+        assert_eq!(fs::read_to_string(&ro).unwrap(), "a");
+    }
+
+    #[test]
+    fn concurrent_saves_leave_one_whole_version() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("f.txt");
+        write_text_file_impl(&p, "init", "lf").unwrap();
+        let a = "A".repeat(100_000);
+        let b = "B".repeat(100_000);
+        let hs: Vec<_> = [a.clone(), b.clone()]
+            .into_iter()
+            .map(|c| {
+                let p = p.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        write_text_file_impl(&p, &c, "lf").unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in hs {
+            h.join().unwrap();
+        }
+        let got = fs::read_to_string(&p).unwrap();
+        assert!(got == a || got == b);
+        assert_eq!(fs::read_dir(d.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn rename_case_only_and_dir() {
+        let d = tempdir().unwrap();
+        let f = d.path().join("abc.txt");
+        fs::write(&f, "1").unwrap();
+        let f2 = d.path().join("ABC.txt");
+        rename_path_impl(&f, &f2).unwrap();
+        let names: Vec<_> = list_dir_impl(d.path()).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, ["ABC.txt"]);
+        let dir = d.path().join("d1");
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("x"), "x").unwrap();
+        let dir2 = d.path().join("d2");
+        rename_path_impl(&dir, &dir2).unwrap();
+        assert!(dir2.join("x").exists() && !dir.exists());
     }
 
     #[test]
