@@ -36,6 +36,7 @@ fn run(cwd: &Path, args: &[&str], no_locks: bool) -> Result<String, String> {
 }
 
 /// Runs git, returning stdout. On failure: trimmed stderr.
+#[allow(dead_code)] // used by ops (Task 2)
 pub fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     run(cwd, args, false)
 }
