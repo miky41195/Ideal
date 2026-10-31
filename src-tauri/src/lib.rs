@@ -1,4 +1,5 @@
 mod claude;
+mod fs_cmds;
 mod pty;
 
 use tauri::{Manager, WindowEvent};
@@ -11,7 +12,14 @@ pub fn run() {
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,
-            pty::pty_kill
+            pty::pty_kill,
+            fs_cmds::list_dir,
+            fs_cmds::read_text_file,
+            fs_cmds::write_text_file,
+            fs_cmds::create_file,
+            fs_cmds::create_dir,
+            fs_cmds::rename_path,
+            fs_cmds::delete_path
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
