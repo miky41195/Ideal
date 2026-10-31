@@ -11,6 +11,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::new())
+        .manage(git::history::HeatmapCache::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -34,6 +35,11 @@ pub fn run() {
             git::ops::git_fetch,
             git::ops::git_pull,
             git::ops::git_push,
+            git::diff::git_file_diff,
+            git::diff::git_commit_file_diff,
+            git::history::git_commit_files,
+            git::history::git_heatmap,
+            git::history::git_day_commits,
             settings::get_settings,
             settings::settings_path,
             settings::get_recent,

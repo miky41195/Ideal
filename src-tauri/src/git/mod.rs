@@ -1,3 +1,5 @@
+pub mod diff;
+pub mod history;
 pub mod ops;
 pub mod runner;
 pub mod status;

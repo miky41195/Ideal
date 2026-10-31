@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-fn run(cwd: &Path, args: &[&str], no_locks: bool) -> Result<String, String> {
+fn run_bytes(cwd: &Path, args: &[&str], no_locks: bool) -> Result<Vec<u8>, String> {
     let mut cmd = Command::new("git");
     cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false"])
         .args(args)
@@ -30,10 +30,19 @@ fn run(cwd: &Path, args: &[&str], no_locks: bool) -> Result<String, String> {
         }
     })?;
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        Ok(out.stdout)
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
+}
+
+fn run(cwd: &Path, args: &[&str], no_locks: bool) -> Result<String, String> {
+    run_bytes(cwd, args, no_locks).map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+
+/// Runs git, returning raw stdout bytes (binary-safe), read-only like `git_read`.
+pub fn git_read_bytes(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    run_bytes(cwd, args, true)
 }
 
 /// Runs git, returning stdout. On failure: trimmed stderr.
