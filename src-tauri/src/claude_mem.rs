@@ -387,7 +387,8 @@ mod tests {
     #[test]
     fn redirect_not_followed() {
         let (port, _h) = stub_status("302 Found", "{}");
-        assert_eq!(health_impl(port).unwrap_err(), "claude-mem errore HTTP 302");
+        // 3xx is returned as-is (never followed): body has no status "ok"
+        assert_eq!(health_impl(port), Ok(false));
     }
 
     #[test]
