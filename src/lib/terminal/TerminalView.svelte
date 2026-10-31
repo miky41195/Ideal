@@ -8,7 +8,19 @@
   import { routeKey } from '../keys/router';
   import { dispatch } from '../commands';
 
-  let { kind, cwd, visible = true }: { kind: PtyKind; cwd: string; visible?: boolean } = $props();
+  let {
+    kind,
+    cwd,
+    visible = true,
+    onexit,
+    onerror,
+  }: {
+    kind: PtyKind;
+    cwd: string;
+    visible?: boolean;
+    onexit?: (code: number | null) => void;
+    onerror?: (msg: string) => void;
+  } = $props();
 
   let host: HTMLDivElement;
   let term: Terminal | undefined;
@@ -73,9 +85,11 @@
       (s) => {
         if (!destroyed) t.write(s);
       },
-      (code) =>
-        !destroyed &&
-        t.write(`\r\n[processo terminato${code === null ? '' : ` con codice ${code}`}]\r\n`),
+      (code) => {
+        if (destroyed) return;
+        t.write(`\r\n[processo terminato${code === null ? '' : ` con codice ${code}`}]\r\n`);
+        onexit?.(code);
+      },
     )
       .then((id) => {
         if (destroyed) {
@@ -86,7 +100,11 @@
         lastSent = initial;
         refit();
       })
-      .catch((e) => t.write(`\r\n[errore avvio terminale: ${e}]\r\n`));
+      .catch((e) => {
+        if (destroyed) return;
+        t.write(`\r\n[errore avvio terminale: ${e}]\r\n`);
+        onerror?.(String(e));
+      });
 
     const ro = new ResizeObserver(() => refit());
     ro.observe(host);
