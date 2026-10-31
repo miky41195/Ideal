@@ -6,7 +6,6 @@
   const titles: Record<SidebarView, string> = {
     explorer: 'Esplora file',
     git: 'Git',
-    heatmap: 'Heatmap',
     notes: 'Note',
     hub: 'Hub',
   };

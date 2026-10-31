@@ -4,7 +4,7 @@
   import { gitHeatmap, gitDayCommits, gitCommitFiles, gitCommitFileDiff, type Heatmap, type CommitInfo, type CommitFile } from '../git/git-client';
   import { tabs } from '../editor/tabs.svelte';
   import { diffTitle } from '../diff/diff-title';
-  import { buildGrid, monthLabels, tooltipFor, localToday } from './calendar';
+  import { buildGrid, monthLabels, tooltipFor, longDate, localToday } from './calendar';
 
   let allAuthors = $state(false);
   let data = $state<Heatmap | null>(null);
@@ -14,6 +14,7 @@
   let selCommit = $state<CommitInfo | null>(null);
   let files = $state<CommitFile[]>([]);
   let seq = 0;
+  let daySeq = 0;
 
   const isRepo = $derived(git.status?.isRepo ?? false);
   const grid = $derived(data ? buildGrid(data.days, localToday()) : []);
@@ -23,7 +24,11 @@
 
   async function load() {
     const my = ++seq;
-    if (!git.path || !isRepo) return;
+    if (!git.path || !isRepo) {
+      data = null;
+      error = null;
+      return;
+    }
     try {
       const d = await gitHeatmap(git.path, allAuthors);
       if (my !== seq) return;
@@ -36,19 +41,22 @@
   }
 
   async function loadDay(date: string, keepCommit = false) {
+    const my = ++daySeq;
     selDate = date;
     if (!keepCommit) {
       selCommit = null;
       files = [];
     }
     try {
-      commits = await gitDayCommits(git.path, date, allAuthors);
+      const list = await gitDayCommits(git.path, date, allAuthors);
+      if (my !== daySeq) return;
+      commits = list;
       if (selCommit && !commits.some((c) => c.hash === selCommit!.hash)) {
         selCommit = null;
         files = [];
       }
     } catch (e) {
-      error = String(e);
+      if (my === daySeq) error = String(e);
     }
   }
 
@@ -59,15 +67,16 @@
       const f = await gitCommitFiles(git.path, c.hash);
       if (selCommit?.hash === c.hash) files = f;
     } catch (e) {
-      error = String(e);
+      if (selCommit?.hash === c.hash) error = String(e);
     }
   }
 
   async function openFile(f: CommitFile) {
-    if (!selCommit) return;
+    const c = selCommit;
+    if (!c) return;
     try {
-      const d = await gitCommitFileDiff(git.path, selCommit.hash, f.path, f.oldPath);
-      tabs.openDiff(`diff:${selCommit.hash}:${f.path}`, diffTitle(f.path, selCommit.short), { old: d.old, new: d.new, binary: d.binary, langPath: f.path });
+      const d = await gitCommitFileDiff(git.path, c.hash, f.path, f.oldPath);
+      tabs.openDiff(`diff:${c.hash}:${f.path}`, diffTitle(f.path, c.short), { old: d.old, new: d.new, binary: d.binary, langPath: f.path });
     } catch (e) {
       error = String(e);
     }
@@ -76,6 +85,7 @@
   $effect(() => {
     void allAuthors;
     void isRepo;
+    daySeq++;
     selDate = null;
     selCommit = null;
     commits = [];
@@ -87,7 +97,9 @@
 </script>
 
 <div class="view">
-  {#if !isRepo}
+  {#if git.status === null}
+    <div class="empty">Caricamento…</div>
+  {:else if !isRepo}
     <div class="empty">Non è un repository git</div>
   {:else}
     <header>
@@ -114,6 +126,7 @@
                       <button
                         class="cell l{cell.level}"
                         class:sel={cell.date === selDate}
+                        aria-pressed={cell.date === selDate}
                         title={tooltipFor(cell.date, cell.count)}
                         aria-label={tooltipFor(cell.date, cell.count)}
                         onclick={() => loadDay(cell.date)}
@@ -132,7 +145,7 @@
     {#if selDate}
       <div class="panels">
         <section>
-          <h3>{tooltipFor(selDate, 0).replace(/^0 commit il /, '')}</h3>
+          <h3>{longDate(selDate)}</h3>
           {#if commits.length === 0}<div class="dim">Nessun commit</div>{/if}
           <ul>
             {#each commits as c (c.hash)}

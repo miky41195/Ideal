@@ -75,10 +75,17 @@ export async function initGit(projectPath: string): Promise<() => void> {
   git.path = projectPath;
   const offs: (() => void)[] = [];
   try {
-    offs.push(await listen<string>('git://changed', () => {
+    offs.push(
+      await listen<string>('git://changed', () => {
         void git.refresh();
-        changedListeners.forEach((f) => f());
-      }));
+        changedListeners.forEach((f) => {
+          try {
+            f();
+          } catch (e) {
+            console.warn('git changed listener failed', e);
+          }
+        });
+      }),);
   } catch (e) {
     console.warn('git listen failed', e);
   }

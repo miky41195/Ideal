@@ -59,10 +59,15 @@ export function monthLabels(grid: (Cell | null)[][]): { col: number; label: stri
   return out;
 }
 
+/** "12 ottobre 2026" */
+export function longDate(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return `${d} ${MONTHS_LONG[m - 1]} ${y}`;
+}
+
 /** "3 commit il 12 ottobre 2026" */
 export function tooltipFor(date: string, count: number): string {
-  const [y, m, d] = date.split('-').map(Number);
-  return `${count} commit il ${d} ${MONTHS_LONG[m - 1]} ${y}`;
+  return `${count} commit il ${longDate(date)}`;
 }
 
 /** Local-timezone YYYY-MM-DD. */

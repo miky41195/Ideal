@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGrid, levelFor, monthLabels } from './calendar';
+import { buildGrid, levelFor, monthLabels, longDate, tooltipFor } from './calendar';
 
 describe('buildGrid', () => {
   const grid = buildGrid(
@@ -53,6 +53,7 @@ describe('levelFor', () => {
     expect(levelFor(1, 8)).toBe(1);
     expect(levelFor(5, 8)).toBe(3);
     expect(levelFor(3, 0)).toBe(1);
+    expect(levelFor(1, 1)).toBe(4);
   });
 });
 
@@ -65,5 +66,16 @@ describe('monthLabels', () => {
   });
   it('first column labelled only if month starts there', () => {
     expect(labels[0].col).toBeGreaterThan(0);
+  });
+});
+
+describe('longDate / tooltipFor', () => {
+  it('formats Italian dates', () => {
+    expect(longDate('2026-10-12')).toBe('12 ottobre 2026');
+    expect(longDate('2026-03-01')).toBe('1 marzo 2026');
+  });
+  it('plural and singular', () => {
+    expect(tooltipFor('2026-10-12', 3)).toBe('3 commit il 12 ottobre 2026');
+    expect(tooltipFor('2026-10-12', 1)).toBe('1 commit il 12 ottobre 2026');
   });
 });
