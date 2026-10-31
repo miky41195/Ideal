@@ -56,6 +56,7 @@ pub fn run() {
             claude_mem::mem_summaries,
             claude_mem::mem_search,
             claude_mem::mem_start_worker,
+            claude_mem::open_in_browser,
             plugins::plugins_status,
             plugins::plugin_enable,
             hub::sessions_list,

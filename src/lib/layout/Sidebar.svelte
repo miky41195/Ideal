@@ -2,12 +2,13 @@
   import type { SidebarView } from '../state/workspace.svelte';
   import Explorer from '../explorer/Explorer.svelte';
   import GitPanel from '../git/GitPanel.svelte';
+  import HubPanel from '../hub/HubPanel.svelte';
   let { view, projectPath }: { view: SidebarView; projectPath: string } = $props();
   const titles: Record<SidebarView, string> = {
     explorer: 'Esplora file',
     git: 'Git',
     notes: 'Note',
-    hub: 'Hub',
+    hub: 'Claude Hub',
   };
 </script>
 
@@ -17,6 +18,8 @@
     <Explorer root={projectPath} />
   {:else if view === 'git'}
     <GitPanel />
+  {:else if view === 'hub'}
+    <HubPanel {projectPath} />
   {:else}
     <div class="body">
       <p class="dim">In arrivo</p>

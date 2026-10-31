@@ -73,3 +73,4 @@ export const memoriesList = (projectPath: string) => invoke<MdFile[]>('memories_
 export const docsList = (projectPath: string) => invoke<MdFile[]>('docs_list', { projectPath });
 export const pluginsStatus = () => invoke<PluginStatus>('plugins_status');
 export const pluginEnable = (key: string) => invoke<void>('plugin_enable', { key });
+export const openInBrowser = (url: string, port: number) => invoke<void>('open_in_browser', { url, port });

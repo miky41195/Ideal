@@ -8,7 +8,7 @@
     { id: 'git', icon: '⎇', label: 'Git' },
     { id: 'heatmap', icon: '▦', label: 'Heatmap' },
     { id: 'notes', icon: '✎', label: 'Note' },
-    { id: 'hub', icon: '◈', label: 'Hub' },
+    { id: 'hub', icon: '✦', label: 'Claude Hub' },
   ];
 
   function pick(id: SidebarView | 'heatmap') {

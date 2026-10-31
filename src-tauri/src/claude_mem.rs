@@ -263,11 +263,71 @@ pub fn mem_start_worker() -> Result<(), String> {
     start_worker_impl(&base)
 }
 
+/// Only the local claude-mem worker UI may be opened: exactly http://127.0.0.1:<port>/... or http://localhost:<port>/...
+pub fn allowed_url(url: &str, port: u16) -> bool {
+    if url.chars().any(|c| c.is_control() || c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '^' | '&' | '|' | '<' | '>' | '%' | '\\')) {
+        return false;
+    }
+    for host in ["127.0.0.1", "localhost"] {
+        let prefix = format!("http://{host}:{port}");
+        if let Some(rest) = url.strip_prefix(&prefix) {
+            return rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') || rest.starts_with('#');
+        }
+    }
+    false
+}
+
+#[tauri::command(async)]
+pub fn open_in_browser(url: String, port: u16) -> Result<(), String> {
+    if !allowed_url(&url, port) {
+        return Err("URL non consentito".into());
+    }
+    let mut cmd = std::process::Command::new("explorer");
+    cmd.arg(&url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    // explorer.exe returns a non-zero exit code even on success; only spawn errors matter.
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    #[test]
+    fn allowed_url_guard() {
+        let ok = ["http://127.0.0.1:37777/", "http://localhost:37777/viewer", "http://127.0.0.1:37777", "http://localhost:37777/?a=1#x"];
+        for u in ok {
+            assert!(allowed_url(u, 37777), "{u}");
+        }
+        let bad = [
+            "http://127.0.0.1:37778/",
+            "http://127.0.0.1:377770/",
+            "http://127.0.0.1:37777@evil.com/",
+            "http://user@127.0.0.1:37777/",
+            "https://127.0.0.1:37777/",
+            "http://evil.com:37777/",
+            "http://localhost.evil.com:37777/",
+            "http://127.0.0.1:37777.evil.com/",
+            "http://127.0.0.1:37777/\"x",
+            "http://127.0.0.1:37777/ x",
+            "http://127.0.0.1:37777/
+x",
+            "http://127.0.0.1:37777/a\"b",
+            "http://127.0.0.1:37777/a&calc",
+            "http://127.0.0.1:37777/a%22b",
+            "file:///c:/windows",
+            "",
+        ];
+        for u in bad {
+            assert!(!allowed_url(u, 37777), "{u}");
+        }
+    }
 
     const FIXTURE: &str = r#"{"items":[{"id":7,"memory_session_id":"s","project":"Ideal","merged_into_project":null,"platform_source":"claude","type":"decision","title":"T","subtitle":null,"narrative":"N","text":"x","facts":"[\"a\",\"b\"]","concepts":"[]","files_read":"[]","files_modified":"[\"src/a.rs\"]","prompt_number":1,"created_at":"2026-10-31","created_at_epoch":1761900000}],"hasMore":true,"offset":0,"limit":1}"#;
 
