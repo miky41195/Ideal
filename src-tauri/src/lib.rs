@@ -1,6 +1,8 @@
 mod claude;
+mod claude_mem;
 mod fs_cmds;
 mod git;
+mod plugins;
 mod pty;
 mod settings;
 
@@ -46,7 +48,14 @@ pub fn run() {
             settings::settings_path,
             settings::get_recent,
             settings::add_recent,
-            settings::open_project_window
+            settings::open_project_window,
+            claude_mem::mem_health,
+            claude_mem::mem_observations,
+            claude_mem::mem_summaries,
+            claude_mem::mem_search,
+            claude_mem::mem_start_worker,
+            plugins::plugins_status,
+            plugins::plugin_enable
         ])
         .setup(|app| {
             settings::start_watcher(app.handle().clone());
