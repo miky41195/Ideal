@@ -11,6 +11,7 @@
   import StatusBar from './lib/layout/StatusBar.svelte';
   import BottomPanel from './lib/layout/BottomPanel.svelte';
   import Welcome from './lib/layout/Welcome.svelte';
+  import EditorArea from './lib/editor/EditorArea.svelte';
   import ClaudeTabs from './lib/claude/ClaudeTabs.svelte';
 
   const project = new URLSearchParams(window.location.search).get('project');
@@ -66,7 +67,7 @@
             <ClaudeTabs {ws} cwd={project} visible={ws.mode === 'claude'} />
           </div>
           {#if ws.mode === 'editor'}
-            <div class="editor"><p>Editor in arrivo</p></div>
+            <div class="editor"><EditorArea /></div>
           {/if}
         </div>
         <BottomPanel cwd={project} open={ws.panelOpen} />
@@ -109,8 +110,5 @@
   .editor {
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
-    color: var(--text-dim);
   }
 </style>
