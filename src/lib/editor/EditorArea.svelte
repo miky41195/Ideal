@@ -5,13 +5,12 @@
   import { tabs, dirty } from './tabs.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
-  let editor: CodeEditor | undefined = $state();
+  let { visible = true }: { visible?: boolean } = $props();
 
   const confirmClose = (name: string) => ask(`Chiudere ${name} senza salvare?`, { title: 'Ideal', kind: 'warning' });
 
   async function close(path: string) {
     await tabs.closeTab(path, confirmClose);
-    if (!tabs.tabs.some((t) => t.path === path)) editor?.forget(path);
   }
 
   onMount(() => {
@@ -34,16 +33,18 @@
         <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}>×</button>
       </div>
     {/each}
-    {#if tabs.error}
-      <span class="err" role="alert">{tabs.error}</span>
-      <button class="x" aria-label="Chiudi messaggio" onclick={() => (tabs.error = null)}>×</button>
-    {/if}
   </div>
+  {#if tabs.errorMessage}
+    <div class="err" role="alert">
+      <span>{tabs.errorMessage}</span>
+      <button class="x" aria-label="Chiudi messaggio" onclick={() => tabs.dismissError()}>×</button>
+    </div>
+  {/if}
   {#if tabs.active}
     {#if tabs.active.readonly}
       <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
     {/if}
-    <div class="body"><CodeEditor bind:this={editor} tab={tabs.active} onchange={(p, c) => tabs.setContent(p, c)} /></div>
+    <div class="body"><CodeEditor tab={tabs.active} {visible} isOpen={(p) => tabs.tabs.some((t) => t.path === p)} onchange={(p, c) => tabs.setContent(p, c)} /></div>
   {:else}
     <div class="empty">Nessun file aperto</div>
   {/if}
@@ -91,10 +92,14 @@
     color: var(--text);
   }
   .err {
-    margin-left: auto;
-    padding: 0 8px;
+    flex: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 12px;
+    background: var(--panel-2);
     color: var(--danger);
-    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
   }
   .banner {
     flex: none;

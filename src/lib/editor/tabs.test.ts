@@ -66,6 +66,52 @@ describe('Tabs', () => {
     write.mockRejectedValue('file di sola lettura');
     await t.save('x.ts');
     expect(dirty(t.tabs[0])).toBe(true);
-    expect(t.error).toContain('sola lettura');
+    expect(t.errors['x.ts']).toContain('sola lettura');
+  });
+
+  it('saveAll keeps a failed tab dirty with its error, cleans the others', async () => {
+    const t = new Tabs();
+    await t.openFile('one.ts');
+    await t.openFile('two.ts');
+    t.setContent('one.ts', 'x1');
+    t.setContent('two.ts', 'x2');
+    write.mockImplementation(async (p: string) => {
+      if (p === 'one.ts') throw 'boom';
+    });
+    await t.saveAll();
+    expect(dirty(t.tabs[0])).toBe(true);
+    expect(dirty(t.tabs[1])).toBe(false);
+    expect(t.errors['one.ts']).toContain('boom');
+    expect(t.errorMessage).toContain('boom');
+    // a later successful open does not wipe it
+    await t.openFile('three.ts');
+    expect(t.errors['one.ts']).toBeDefined();
+  });
+
+  it('openFile failure sets openError', async () => {
+    read.mockRejectedValue('nope');
+    const t = new Tabs();
+    await t.openFile('bad.ts');
+    expect(t.tabs).toHaveLength(0);
+    expect(t.openError).toContain('nope');
+  });
+
+  it('closing the active tab activates a neighbour', async () => {
+    const t = new Tabs();
+    await t.openFile('a');
+    await t.openFile('b');
+    await t.openFile('c');
+    await t.closeTab('c', async () => true);
+    expect(t.activePath).toBe('b');
+    await t.closeTab('a', async () => true);
+    expect(t.activePath).toBe('b');
+  });
+
+  it('save guard: readonly tab with differing content never writes', async () => {
+    const t = new Tabs();
+    t.tabs.push({ path: 'r', name: 'r', content: 'new', savedContent: 'old', eol: 'lf', readonly: true });
+    await t.save('r');
+    await t.saveAll();
+    expect(write).not.toHaveBeenCalled();
   });
 });

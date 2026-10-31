@@ -66,9 +66,10 @@
           <div class="claude" class:off={ws.mode !== 'claude'}>
             <ClaudeTabs {ws} cwd={project} visible={ws.mode === 'claude'} />
           </div>
-          {#if ws.mode === 'editor'}
-            <div class="editor"><EditorArea /></div>
-          {/if}
+          <!-- Editor stays mounted too, so per-tab state survives mode switches. -->
+          <div class="editor" class:off={ws.mode !== 'editor'}>
+            <EditorArea visible={ws.mode === 'editor'} />
+          </div>
         </div>
         <BottomPanel cwd={project} open={ws.panelOpen} />
       </div>
@@ -103,7 +104,8 @@
     position: absolute;
     inset: 0;
   }
-  .claude.off {
+  .claude.off,
+  .editor.off {
     visibility: hidden;
     pointer-events: none;
   }

@@ -17,7 +17,9 @@ const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? pa
 export class Tabs {
   tabs = $state<EditorTab[]>([]);
   activePath = $state<string | null>(null);
-  error = $state<string | null>(null);
+  /** Save errors, per path; cleared only by that path's successful save or close. */
+  errors = $state<Record<string, string>>({});
+  openError = $state<string | null>(null);
 
   get active(): EditorTab | undefined {
     return this.tabs.find((t) => t.path === this.activePath);
@@ -46,9 +48,9 @@ export class Tabs {
         });
       }
       this.activePath = path;
-      this.error = null;
+      this.openError = null;
     } catch (e) {
-      this.error = `Impossibile aprire ${nameOf(path)}: ${String(e)}`;
+      this.openError = `Impossibile aprire ${nameOf(path)}: ${String(e)}`;
     }
   }
 
@@ -65,6 +67,7 @@ export class Tabs {
     const j = this.tabs.findIndex((t) => t.path === path);
     if (j < 0) return;
     this.tabs.splice(j, 1);
+    delete this.errors[path];
     if (this.activePath === path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
   }
 
@@ -75,10 +78,21 @@ export class Tabs {
     try {
       await writeTextFile(path, snapshot, t.eol);
       t.savedContent = snapshot;
-      this.error = null;
+      delete this.errors[path];
     } catch (e) {
-      this.error = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;
+      this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;
     }
+  }
+
+  /** First current error to display (save errors of open tabs, else open error). */
+  get errorMessage(): string | null {
+    for (const t of this.tabs) if (this.errors[t.path]) return this.errors[t.path];
+    return this.openError;
+  }
+
+  dismissError(): void {
+    this.openError = null;
+    this.errors = {};
   }
 
   async saveAll(): Promise<void> {

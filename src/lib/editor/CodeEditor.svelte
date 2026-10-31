@@ -13,7 +13,7 @@
     crosshairCursor,
   } from '@codemirror/view';
   import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-  import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+  import { searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
   import {
     bracketMatching,
     foldGutter,
@@ -29,7 +29,17 @@
   import { EDITOR_DEFAULTS } from './settings';
   import type { EditorTab } from './tabs.svelte';
 
-  let { tab, onchange }: { tab: EditorTab; onchange: (path: string, content: string) => void } = $props();
+  let {
+    tab,
+    onchange,
+    isOpen,
+    visible = true,
+  }: {
+    tab: EditorTab;
+    onchange: (path: string, content: string) => void;
+    isOpen: (path: string) => boolean;
+    visible?: boolean;
+  } = $props();
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
@@ -72,6 +82,7 @@
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
+        { key: 'Mod-h', run: openSearchPanel, preventDefault: true },
         ...searchKeymap,
         ...historyKeymap,
         ...foldKeymap,
@@ -102,7 +113,8 @@
 
   function show(t: EditorTab) {
     if (!view) return;
-    if (currentPath) states.set(currentPath, view.state);
+    if (currentPath && isOpen(currentPath)) states.set(currentPath, view.state);
+    for (const p of [...states.keys()]) if (!isOpen(p)) states.delete(p);
     let st = states.get(t.path);
     const fresh = !st;
     if (!st) st = EditorState.create({ doc: t.content, extensions: extensions(t) });
@@ -126,10 +138,13 @@
     if (t.path !== currentPath) show(t);
   });
 
-  /** Drop cached state for closed tabs. */
-  export function forget(path: string) {
-    states.delete(path);
-  }
+  // Re-measure and focus when the (kept-mounted) editor is shown again.
+  $effect(() => {
+    if (visible && view) {
+      view.requestMeasure();
+      view.focus();
+    }
+  });
 </script>
 
 <div class="cm-host" bind:this={host}></div>
