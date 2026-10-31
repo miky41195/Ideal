@@ -7,7 +7,10 @@ const msg = (e: unknown) => (typeof e === 'string' ? e : e instanceof Error ? e.
 export class GitState {
   status = $state<RepoStatus | null>(null);
   busy = $state<string | null>(null);
+  /** Error of the last git action (run); kept until dismissed or the next action. */
   error = $state<string | null>(null);
+  /** Error of the last status refresh; cleared by the next successful refresh. */
+  statusError = $state<string | null>(null);
   path = '';
   #inFlight: Promise<void> | null = null;
   #queued: Promise<void> | null = null;
@@ -31,8 +34,9 @@ export class GitState {
   async #fetch(): Promise<void> {
     try {
       this.status = await gitStatus(this.path);
+      this.statusError = null;
     } catch (e) {
-      this.error = msg(e);
+      this.statusError = msg(e);
     } finally {
       this.#inFlight = null;
     }
