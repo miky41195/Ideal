@@ -25,6 +25,7 @@ portable-pty = "0.9.0"
 which = "8.0.6"
 trash = "5"
 tempfile = "3.27.0"
+notify = "8"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects"] }
 
 

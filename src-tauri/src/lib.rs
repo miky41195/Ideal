@@ -1,6 +1,7 @@
 mod claude;
 mod fs_cmds;
 mod pty;
+mod settings;
 
 use tauri::{Manager, WindowEvent};
 
@@ -19,8 +20,16 @@ pub fn run() {
             fs_cmds::create_file,
             fs_cmds::create_dir,
             fs_cmds::rename_path,
-            fs_cmds::delete_path
+            fs_cmds::delete_path,
+            settings::get_settings,
+            settings::get_recent,
+            settings::add_recent,
+            settings::open_project_window
         ])
+        .setup(|app| {
+            settings::start_watcher(app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
                 window.app_handle().state::<pty::PtyManager>().kill_all();
