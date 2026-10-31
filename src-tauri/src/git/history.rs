@@ -228,7 +228,7 @@ pub fn heatmap_impl(
         let log = runner::git_read(
             cwd,
             &[
-                "log", "--all", "--no-merges", "--since=366.days",
+                "log", "--all", "--no-merges", "--since=400.days",
                 "--date=format-local:%Y-%m-%d", "--format=%ad%x09%ae",
             ],
         )?;
@@ -260,17 +260,31 @@ pub fn day_commits_impl(
     if !all_authors && email.is_empty() {
         return Ok(vec![]);
     }
-    // Select by author date in local time: window on committer date, then filter on %ad.
-    let since = format!("--since={}", add_days(date, -1));
-    let until = format!("--until={}", add_days(date, 2));
-    let out = runner::git_read(
+    // Same selection as the heatmap: author date (local), generous committer-date prefilter.
+    let sel = runner::git_read(
         cwd,
         &[
-            "log", "--all", "--no-merges", &since, &until, "--numstat", "-M",
-            "--date=format-local:%Y-%m-%d",
-            "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
+            "log", "--all", "--no-merges", "--since=400.days",
+            "--date=format-local:%Y-%m-%d", "--format=%H%x09%ad%x09%ae",
         ],
     )?;
+    let hashes: Vec<&str> = sel
+        .lines()
+        .filter_map(|l| {
+            let mut p = l.splitn(3, '\t');
+            let (h, d, e) = (p.next()?, p.next()?, p.next()?);
+            (d == date && (all_authors || e.trim().eq_ignore_ascii_case(&email))).then_some(h)
+        })
+        .collect();
+    if hashes.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut args: Vec<&str> = vec![
+        "log", "--no-walk=unsorted", "--numstat", "-M", "--date=format-local:%Y-%m-%d",
+        "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
+    ];
+    args.extend(hashes.iter().copied());
+    let out = runner::git_read(cwd, &args)?;
     let mut res = Vec::new();
     for rec in out.split('\x1e').filter(|r| !r.trim().is_empty()) {
         let mut lines = rec.lines();
@@ -417,6 +431,28 @@ mod tests {
         assert_eq!(h.days.iter().find(|x| x.date == t).map(|x| x.count), Some(2));
         assert_eq!(h.max, 2);
         assert_eq!(h.email.as_deref(), Some("me@ideal.dev"));
+    }
+
+    #[test]
+    fn rebased_commit_listed_on_author_day() {
+        let d = test_repo();
+        let p = d.path();
+        let old = add_days(&today(p), -10);
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        runner::git(p, &["add", "-A"]).unwrap();
+        let ok = std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "vecchio"])
+            .current_dir(p)
+            .env("GIT_AUTHOR_DATE", format!("{old}T12:00:00"))
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        let (h, _) = heatmap_impl(p, false, &HeatmapCache::default()).unwrap();
+        assert_eq!(h.days, vec![DayCount { date: old.clone(), count: 1 }]);
+        let v = day_commits_impl(p, &old, false).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].subject, "vecchio");
     }
 
     #[test]
