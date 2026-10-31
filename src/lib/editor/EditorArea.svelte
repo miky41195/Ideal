@@ -2,10 +2,14 @@
   import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { onCommand } from '../commands';
-  import { tabs, dirty } from './tabs.svelte';
+  import { tabs, dirty, isFileTab } from './tabs.svelte';
+  import DiffView from '../diff/DiffView.svelte';
+  import HeatmapView from '../heatmap/HeatmapView.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
+
+  const hasHeatmap = $derived(tabs.tabs.some((t) => t.kind === 'heatmap'));
 
   const confirmClose = (name: string) => ask(`Chiudere ${name} senza salvare?`, { title: 'Ideal', kind: 'warning' });
 
@@ -27,7 +31,7 @@
   <div class="strip" role="tablist">
     {#each tabs.tabs as t (t.path)}
       <div class="tab" class:active={t.path === tabs.activePath} role="presentation">
-        <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={t.path} onclick={() => tabs.select(t.path)}>
+        <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={isFileTab(t) ? t.path : t.name} onclick={() => tabs.select(t.path)}>
           {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"> ●</span>{/if}
         </button>
         <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}>×</button>
@@ -41,10 +45,28 @@
     </div>
   {/if}
   {#if tabs.active}
-    {#if tabs.active.readonly}
+    {@const onFile = tabs.active === tabs.activeFileTab}
+    {#if onFile && tabs.active.readonly}
       <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
     {/if}
-    <div class="body"><CodeEditor tab={tabs.active} {visible} isOpen={(p) => tabs.tabs.some((t) => t.path === p)} onchange={(p, c) => tabs.setContent(p, c)} /></div>
+    <div class="main">
+      {#if tabs.activeFileTab}
+        <div class="body" class:hidden={!onFile}>
+          <CodeEditor tab={tabs.activeFileTab} visible={visible && onFile} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} />
+        </div>
+      {/if}
+      {#if hasHeatmap}
+        <!-- Stays mounted while the tab exists, so the selection survives opening a diff. -->
+        <div class="overlay" class:hidden={tabs.active.kind !== 'heatmap'}>
+          <HeatmapView />
+        </div>
+      {/if}
+      {#if tabs.active.kind === 'diff' && tabs.active.diff}
+        <div class="overlay">
+          <DiffView diff={tabs.active.diff} />
+        </div>
+      {/if}
+    </div>
   {:else}
     <div class="empty">Nessun file aperto</div>
   {/if}
@@ -111,7 +133,29 @@
     color: var(--text-dim);
     border-bottom: 1px solid var(--border);
   }
+  .main {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
   .body {
+    position: absolute;
+    inset: 0;
+  }
+  .body.hidden {
+    visibility: hidden;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+  .overlay.hidden {
+    visibility: hidden;
+  }
+  .overlay > :global(*) {
     flex: 1;
     min-height: 0;
   }

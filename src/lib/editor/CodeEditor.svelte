@@ -19,12 +19,10 @@
     foldGutter,
     foldKeymap,
     indentOnInput,
-    syntaxHighlighting,
-    defaultHighlightStyle,
     indentUnit,
   } from '@codemirror/language';
   import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
-  import { oneDark } from '@codemirror/theme-one-dark';
+  import { baseTheme, highlightingExt } from './theme';
   import { languageFor } from './languages';
   import { settings } from '../settings/settings.svelte';
   import { tabs, remapPath, type EditorTab } from './tabs.svelte';
@@ -51,16 +49,12 @@
   let currentPath: string | null = null;
 
   const makeTheme = (fontSize: number, fontFamily: string) =>
-    EditorView.theme({
-    '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: `${fontSize}px` },
-    '.cm-scroller': { fontFamily, lineHeight: '1.5' },
-    '.cm-gutters': { backgroundColor: 'var(--panel)', color: 'var(--text-dim)', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'var(--accent-soft)' },
-    '.cm-activeLineGutter': { backgroundColor: 'var(--accent-soft)' },
-    '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--text)' },
-    '.cm-panels': { backgroundColor: 'var(--panel-2)', color: 'var(--text)' },
-    '&.cm-focused': { outline: 'none' },
-  });
+    baseTheme(fontSize, fontFamily, {
+      '.cm-activeLine': { backgroundColor: 'var(--accent-soft)' },
+      '.cm-activeLineGutter': { backgroundColor: 'var(--accent-soft)' },
+      '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--text)' },
+      '.cm-panels': { backgroundColor: 'var(--panel-2)', color: 'var(--text)' },
+    });
 
   const lookExt = () => makeTheme(settings.value.editor.fontSize, settings.value.editor.fontFamily);
   const indentExt = () => [
@@ -78,7 +72,6 @@
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching(),
       closeBrackets(),
       autocompletion(),
@@ -97,7 +90,7 @@
         ...completionKeymap,
         indentWithTab,
       ]),
-      oneDark,
+      ...highlightingExt,
       look.of(lookExt()),
       lang.of([]),
       EditorState.readOnly.of(t.readonly),

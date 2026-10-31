@@ -19,6 +19,20 @@ beforeEach(() => {
 });
 
 describe('Tabs', () => {
+  it('save notifies onSaved listeners only on success', async () => {
+    const t = new Tabs();
+    const cb = vi.fn();
+    t.onSaved(cb);
+    await t.openFile('C:\p\a.ts');
+    t.setContent('C:\p\a.ts', 'x');
+    await t.save('C:\p\a.ts');
+    expect(cb).toHaveBeenCalledTimes(1);
+    write.mockRejectedValueOnce('boom');
+    t.setContent('C:\p\a.ts', 'y');
+    await t.save('C:\p\a.ts');
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
   it('opening the same path twice yields one tab', async () => {
     const t = new Tabs();
     await t.openFile('C:\\p\\a.ts');
@@ -164,5 +178,85 @@ describe('unsaved / retarget / orphan', () => {
     expect(t.tabs[0].orphaned).toBe(true);
     await t.save('C:\\p\\d\\b.ts');
     expect(t.tabs[0].orphaned).toBe(false);
+  });
+});
+
+describe('diff and heatmap tabs', () => {
+  const d = { old: 'a', new: 'b', binary: false, langPath: 'src/a.ts' };
+
+  it('openDiff twice with same id keeps one tab and updates content', () => {
+    const t = new Tabs();
+    t.openDiff('diff:staged:src/a.ts', 'a.ts (HEAD ↔ Indice)', d);
+    t.openDiff('diff:staged:src/a.ts', 'a.ts (HEAD ↔ Indice)', { ...d, new: 'c' });
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].kind).toBe('diff');
+    expect(t.tabs[0].diff?.new).toBe('c');
+    expect(t.activePath).toBe('diff:staged:src/a.ts');
+  });
+
+  it('diff tab is never unsaved and save/saveAll ignore it', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.tabs[0].content = 'changed';
+    expect(hasUnsaved(t.tabs)).toBe(false);
+    await t.save('diff:x');
+    await t.saveAll();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('retarget and orphan skip non-file tabs', () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.openHeatmap();
+    t.retarget('diff:x', 'zzz');
+    t.orphan('heatmap:');
+    expect(t.tabs.map((x) => x.path)).toEqual(['diff:x', 'heatmap:']);
+  });
+
+  it('openHeatmap is a singleton', () => {
+    const t = new Tabs();
+    t.openHeatmap();
+    t.openHeatmap();
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].kind).toBe('heatmap');
+    expect(t.tabs[0].name).toBe('Heatmap');
+    expect(t.activePath).toBe('heatmap:');
+  });
+});
+
+describe('file/diff interplay', () => {
+  const d = { old: 'a', new: 'b', binary: false, langPath: 'a.ts' };
+
+  it('activeFileTab falls back to the last active file tab behind a diff', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\p\a.ts');
+    await t.openFile('C:\p\b.ts');
+    await t.openFile('C:\p\a.ts');
+    t.openDiff('diff:x', 'x', d);
+    expect(t.active?.kind).toBe('diff');
+    expect(t.activeFileTab?.path).toBe('C:\p\a.ts');
+    t.openHeatmap();
+    expect(t.activeFileTab?.path).toBe('C:\p\a.ts');
+    t.select('C:\p\b.ts');
+    expect(t.activeFileTab?.path).toBe('C:\p\b.ts');
+  });
+
+  it('openFile is unaffected by an existing diff tab', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    await t.openFile('C:\p\a.ts');
+    expect(t.tabs).toHaveLength(2);
+    expect(t.active?.kind).toBe('file');
+  });
+
+  it('closeTab on a diff tab never prompts; setContent ignored', async () => {
+    const t = new Tabs();
+    t.openDiff('diff:x', 'x', d);
+    t.setContent('diff:x', 'zzz');
+    expect(t.tabs[0].content).toBe('');
+    const confirm = vi.fn().mockResolvedValue(false);
+    await t.closeTab('diff:x', confirm);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(t.tabs).toHaveLength(0);
   });
 });
