@@ -10,14 +10,14 @@ export type Command =
   | 'closeTab';
 
 export interface KeyEvent {
-  key: string;
+  code: string; // physical key (KeyboardEvent.code)
   ctrl: boolean;
   shift: boolean;
   alt: boolean;
 }
 
 export interface Binding {
-  key: string; // compared lowercase
+  code: string; // KeyboardEvent.code, layout independent
   ctrl: boolean;
   shift: boolean;
   focus: Focus[]; // focuses in which the binding is active
@@ -28,15 +28,15 @@ const ANY: Focus[] = ['terminal', 'editor', 'other'];
 const EDITOR: Focus[] = ['editor', 'other'];
 
 export const DEFAULT_BINDINGS: Binding[] = [
-  { key: 'e', ctrl: true, shift: true, focus: ANY, command: 'toggleMode' },
-  { key: 'p', ctrl: true, shift: true, focus: ANY, command: 'palette' },
-  { key: 'o', ctrl: true, shift: true, focus: ANY, command: 'quickOpen' },
-  { key: '`', ctrl: true, shift: true, focus: ANY, command: 'togglePanel' },
-  { key: 't', ctrl: true, shift: true, focus: ANY, command: 'newClaudeTab' },
-  { key: 's', ctrl: true, shift: true, focus: ANY, command: 'saveAll' },
-  { key: 'p', ctrl: true, shift: false, focus: EDITOR, command: 'quickOpen' },
-  { key: 's', ctrl: true, shift: false, focus: EDITOR, command: 'save' },
-  { key: 'w', ctrl: true, shift: false, focus: EDITOR, command: 'closeTab' },
+  { code: 'KeyE', ctrl: true, shift: true, focus: ANY, command: 'toggleMode' },
+  { code: 'KeyP', ctrl: true, shift: true, focus: ANY, command: 'palette' },
+  { code: 'KeyO', ctrl: true, shift: true, focus: ANY, command: 'quickOpen' },
+  { code: 'Backquote', ctrl: true, shift: true, focus: ANY, command: 'togglePanel' },
+  { code: 'KeyT', ctrl: true, shift: true, focus: ANY, command: 'newClaudeTab' },
+  { code: 'KeyS', ctrl: true, shift: true, focus: ANY, command: 'saveAll' },
+  { code: 'KeyP', ctrl: true, shift: false, focus: EDITOR, command: 'quickOpen' },
+  { code: 'KeyS', ctrl: true, shift: false, focus: EDITOR, command: 'save' },
+  { code: 'KeyW', ctrl: true, shift: false, focus: EDITOR, command: 'closeTab' },
 ];
 
 export function routeKey(
@@ -45,9 +45,8 @@ export function routeKey(
   bindings: Binding[] = DEFAULT_BINDINGS,
 ): Command | null {
   if (ev.alt) return null;
-  const key = ev.key.toLowerCase();
   for (const b of bindings) {
-    if (b.key === key && b.ctrl === ev.ctrl && b.shift === ev.shift && b.focus.includes(focus)) {
+    if (b.code === ev.code && b.ctrl === ev.ctrl && b.shift === ev.shift && b.focus.includes(focus)) {
       return b.command;
     }
   }

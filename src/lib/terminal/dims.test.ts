@@ -11,3 +11,16 @@ describe('safeDims', () => {
     expect(safeDims(80, 24)).toEqual({ cols: 80, rows: 24 });
   });
 });
+
+describe('safeDims edge cases', () => {
+  it('rejects NaN/Infinity', () => {
+    expect(safeDims(NaN, 24)).toBeNull();
+    expect(safeDims(80, Infinity)).toBeNull();
+  });
+  it('floors non-integers', () => {
+    expect(safeDims(80.7, 24.2)).toEqual({ cols: 80, rows: 24 });
+  });
+  it('rejects values that floor below 2', () => {
+    expect(safeDims(1.9, 24)).toBeNull();
+  });
+});

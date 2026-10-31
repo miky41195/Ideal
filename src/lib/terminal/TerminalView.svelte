@@ -24,13 +24,13 @@
     if (!d || ptyId === null) return;
     if (d.cols === lastSent.cols && d.rows === lastSent.rows) return;
     lastSent = d;
-    resizePty(ptyId, d.cols, d.rows).catch(() => {});
+    resizePty(ptyId, d.cols, d.rows).catch((e) => console.warn('pty_resize failed', e));
   }
 
   onMount(() => {
     const t = new Terminal({
-      fontFamily: 'Consolas, "Cascadia Mono", monospace',
-      fontSize: 14,
+      fontFamily: '"Cascadia Code", Consolas, monospace',
+      fontSize: 13,
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -43,7 +43,7 @@
     t.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true;
       const cmd = routeKey(
-        { key: ev.key, ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey },
+        { code: ev.code, ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey },
         'terminal',
       );
       if (cmd) {
@@ -56,7 +56,7 @@
 
     // Wire input before spawn so ConPTY's ESC[6n reply is never lost.
     t.onData((s) => {
-      if (ptyId !== null) writePty(ptyId, s).catch(() => {});
+      if (ptyId !== null) writePty(ptyId, s).catch((e) => console.warn('pty_write failed', e));
     });
 
     let initial = { cols: 80, rows: 24 };
@@ -70,8 +70,12 @@
       cwd,
       initial.cols,
       initial.rows,
-      (s) => t.write(s),
-      (code) => t.write(`\r\n[processo terminato${code === null ? '' : ` con codice ${code}`}]\r\n`),
+      (s) => {
+        if (!destroyed) t.write(s);
+      },
+      (code) =>
+        !destroyed &&
+        t.write(`\r\n[processo terminato${code === null ? '' : ` con codice ${code}`}]\r\n`),
     )
       .then((id) => {
         if (destroyed) {
@@ -97,11 +101,13 @@
     };
   });
 
+  let wasVisible: boolean | undefined;
   $effect(() => {
     if (visible) {
       refit();
-      term?.focus();
+      if (wasVisible === false) term?.focus();
     }
+    wasVisible = visible;
   });
 </script>
 
