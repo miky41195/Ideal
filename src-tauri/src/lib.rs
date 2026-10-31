@@ -1,5 +1,6 @@
 mod claude;
 mod fs_cmds;
+mod git;
 mod pty;
 mod settings;
 
@@ -22,6 +23,7 @@ pub fn run() {
             fs_cmds::create_dir,
             fs_cmds::rename_path,
             fs_cmds::delete_path,
+            git::status::git_status,
             settings::get_settings,
             settings::settings_path,
             settings::get_recent,
