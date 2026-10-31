@@ -1,6 +1,6 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
 
-export type TabKind = 'file' | 'diff' | 'heatmap';
+export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
 export interface DiffData {
   old: string;
@@ -15,6 +15,8 @@ export interface EditorTab {
   /** Defaults to 'file'. */
   kind?: TabKind;
   diff?: DiffData;
+  doc?: { markdown: string; sourcePath?: string };
+  transcript?: { projectPath: string; sessionId: string; title: string };
   name: string;
   content: string;
   savedContent: string;
@@ -129,6 +131,37 @@ export class Tabs {
       existing.name = title;
     } else {
       this.tabs.push({ path: id, kind: 'diff', diff, name: title, content: '', savedContent: '', eol: 'lf', readonly: true });
+    }
+    this.activePath = id;
+  }
+
+  /** Opens (or refreshes and focuses) a read-only rendered-markdown tab keyed by `id`. */
+  openDoc(id: string, title: string, markdown: string, sourcePath?: string): void {
+    this.noteFile();
+    const existing = this.tabs.find((t) => t.path === id);
+    if (existing) {
+      existing.doc = { markdown, sourcePath };
+      existing.name = title;
+    } else {
+      this.tabs.push({ path: id, kind: 'doc', doc: { markdown, sourcePath }, name: title, content: '', savedContent: '', eol: 'lf', readonly: true });
+    }
+    this.activePath = id;
+  }
+
+  openTranscript(projectPath: string, meta: { id: string; title: string }): void {
+    this.noteFile();
+    const id = `transcript:${meta.id}`;
+    if (!this.tabs.some((t) => t.path === id)) {
+      this.tabs.push({
+        path: id,
+        kind: 'transcript',
+        transcript: { projectPath, sessionId: meta.id, title: meta.title },
+        name: meta.title,
+        content: '',
+        savedContent: '',
+        eol: 'lf',
+        readonly: true,
+      });
     }
     this.activePath = id;
   }

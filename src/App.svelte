@@ -20,6 +20,7 @@
   import { ask } from '@tauri-apps/plugin-dialog';
   import { initGit, git } from './lib/git/git-store.svelte';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
+  import { hub } from './lib/hub/hub-store.svelte';
   import { onTerminalActivity, debounce } from './lib/terminal/activity';
 
   const project = new URLSearchParams(window.location.search).get('project');
@@ -42,6 +43,8 @@
     const offs = [
       tabs.onSaved(() => void git.refresh()),
       onTerminalActivity(idleRefresh),
+      onTerminalActivity(() => hub.refreshOnActivity()),
+      () => hub.cancelActivity(),
       idleRefresh.cancel,
       onCommand('toggleMode', () => ws.toggleMode()),
       onCommand('togglePanel', () => ws.togglePanel()),
@@ -69,6 +72,7 @@
     let offGit: (() => void) | undefined;
     let disposed = false;
     if (project) {
+      hub.projectPath = project;
       void initGit(project).then((f) => (disposed ? f() : (offGit = f)));
       void getCurrentWindow()
         .onCloseRequested(async (e) => {

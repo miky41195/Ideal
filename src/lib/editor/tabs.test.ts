@@ -259,4 +259,21 @@ describe('file/diff interplay', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(t.tabs).toHaveLength(0);
   });
+
+  it('doc and transcript tabs are singleton, readonly, never dirty, not saved', async () => {
+    const t = new Tabs();
+    t.openDoc('doc:a', 'A', '# a');
+    t.openDoc('doc:a', 'A2', '# b');
+    t.openTranscript('/p', { id: 's1', title: 'Sessione' });
+    t.openTranscript('/p', { id: 's1', title: 'Sessione' });
+    expect(t.tabs).toHaveLength(2);
+    expect(t.tabs[0].doc?.markdown).toBe('# b');
+    expect(t.tabs[1].path).toBe('transcript:s1');
+    expect(t.tabs[1].transcript).toEqual({ projectPath: '/p', sessionId: 's1', title: 'Sessione' });
+    expect(hasUnsaved(t.tabs)).toBe(false);
+    t.setContent('doc:a', 'x');
+    await t.save('doc:a');
+    expect(write).not.toHaveBeenCalled();
+    expect(t.activeFileTab).toBeUndefined();
+  });
 });

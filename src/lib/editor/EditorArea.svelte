@@ -5,6 +5,8 @@
   import { tabs, dirty, isFileTab } from './tabs.svelte';
   import DiffView from '../diff/DiffView.svelte';
   import HeatmapView from '../heatmap/HeatmapView.svelte';
+  import DocView from '../hub/DocView.svelte';
+  import TranscriptView from '../hub/TranscriptView.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
@@ -59,6 +61,18 @@
         <!-- Stays mounted while the tab exists, so the selection survives opening a diff. -->
         <div class="overlay" class:hidden={tabs.active.kind !== 'heatmap'}>
           <HeatmapView />
+        </div>
+      {/if}
+      {#if tabs.active.kind === 'doc' && tabs.active.doc}
+        <div class="overlay">
+          <DocView markdown={tabs.active.doc.markdown} />
+        </div>
+      {/if}
+      {#if tabs.active.kind === 'transcript' && tabs.active.transcript}
+        <div class="overlay">
+          {#key tabs.active.path}
+            <TranscriptView projectPath={tabs.active.transcript.projectPath} sessionId={tabs.active.transcript.sessionId} />
+          {/key}
         </div>
       {/if}
       {#if tabs.active.kind === 'diff' && tabs.active.diff}
