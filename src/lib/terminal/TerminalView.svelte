@@ -7,6 +7,7 @@
   import { safeDims } from './dims';
   import { routeKey } from '../keys/router';
   import { dispatch } from '../commands';
+  import { settings } from '../settings/settings.svelte';
 
   let {
     kind,
@@ -42,7 +43,7 @@
   onMount(() => {
     const t = new Terminal({
       fontFamily: '"Cascadia Code", Consolas, monospace',
-      fontSize: 13,
+      fontSize: settings.value.terminal.fontSize,
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -117,6 +118,14 @@
       t.dispose();
       term = undefined;
     };
+  });
+
+  $effect(() => {
+    const size = settings.value.terminal.fontSize;
+    if (term && term.options.fontSize !== size) {
+      term.options.fontSize = size;
+      refit();
+    }
   });
 
   let wasVisible: boolean | undefined;

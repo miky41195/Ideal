@@ -23,6 +23,7 @@ pub fn run() {
             fs_cmds::rename_path,
             fs_cmds::delete_path,
             settings::get_settings,
+            settings::settings_path,
             settings::get_recent,
             settings::add_recent,
             settings::open_project_window

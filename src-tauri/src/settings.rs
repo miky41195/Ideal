@@ -252,6 +252,21 @@ pub fn get_settings() -> SettingsWithWarning {
     load(&config_dir())
 }
 
+/// Path of settings.json; creates it from the bundled defaults if missing.
+pub fn ensure_settings_file(dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(err)?;
+    let path = dir.join("settings.json");
+    if !path.exists() {
+        std::fs::write(&path, DEFAULTS_JSON).map_err(err)?;
+    }
+    Ok(path)
+}
+
+#[tauri::command(async)]
+pub fn settings_path() -> Result<String, String> {
+    ensure_settings_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[tauri::command(async)]
 pub fn get_recent() -> Vec<String> {
     get_recent_impl(&config_dir())
@@ -370,6 +385,16 @@ mod tests {
         assert!(r.warning.is_none());
         fs::write(d.path().join("settings.json"), r#"{"editor":{"tabSize":"a"}}"#).unwrap();
         assert!(load(d.path()).warning.is_some());
+    }
+
+    #[test]
+    fn ensure_settings_file_creates_from_defaults_once() {
+        let d = tmp();
+        let p = ensure_settings_file(d.path()).unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), DEFAULTS_JSON);
+        fs::write(&p, "{}").unwrap();
+        ensure_settings_file(d.path()).unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "{}");
     }
 
     #[test]

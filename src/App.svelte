@@ -13,6 +13,9 @@
   import Welcome from './lib/layout/Welcome.svelte';
   import EditorArea from './lib/editor/EditorArea.svelte';
   import ClaudeTabs from './lib/claude/ClaudeTabs.svelte';
+  import Palette from './lib/palette/Palette.svelte';
+  import Toasts from './lib/ui/Toasts.svelte';
+  import { settings } from './lib/settings/settings.svelte';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -22,6 +25,7 @@
   }
 
   onMount(() => {
+    void settings.init();
     const offs = [
       onCommand('toggleMode', () => ws.toggleMode()),
       onCommand('togglePanel', () => ws.togglePanel()),
@@ -75,8 +79,10 @@
       </div>
     </div>
     <StatusBar mode={ws.mode} path={project} />
+    <Palette />
   </div>
 {/if}
+<Toasts />
 
 <style>
   .shell {

@@ -26,7 +26,7 @@
   import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
   import { oneDark } from '@codemirror/theme-one-dark';
   import { languageFor } from './languages';
-  import { EDITOR_DEFAULTS } from './settings';
+  import { settings } from '../settings/settings.svelte';
   import type { EditorTab } from './tabs.svelte';
 
   let {
@@ -46,11 +46,14 @@
   // One EditorState per tab keeps undo history and selection across switches.
   const states = new Map<string, EditorState>();
   const lang = new Compartment();
+  const look = new Compartment();
+  const indent = new Compartment();
   let currentPath: string | null = null;
 
-  const theme = EditorView.theme({
-    '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: `${EDITOR_DEFAULTS.fontSize}px` },
-    '.cm-scroller': { fontFamily: EDITOR_DEFAULTS.fontFamily, lineHeight: '1.5' },
+  const makeTheme = (fontSize: number, fontFamily: string) =>
+    EditorView.theme({
+    '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: `${fontSize}px` },
+    '.cm-scroller': { fontFamily, lineHeight: '1.5' },
     '.cm-gutters': { backgroundColor: 'var(--panel)', color: 'var(--text-dim)', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'var(--accent-soft)' },
     '.cm-activeLineGutter': { backgroundColor: 'var(--accent-soft)' },
@@ -58,6 +61,12 @@
     '.cm-panels': { backgroundColor: 'var(--panel-2)', color: 'var(--text)' },
     '&.cm-focused': { outline: 'none' },
   });
+
+  const lookExt = () => makeTheme(settings.value.editor.fontSize, settings.value.editor.fontFamily);
+  const indentExt = () => [
+    EditorState.tabSize.of(settings.value.editor.tabSize),
+    indentUnit.of(' '.repeat(settings.value.editor.tabSize)),
+  ];
 
   function extensions(t: EditorTab): Extension[] {
     return [
@@ -77,8 +86,7 @@
       crosshairCursor(),
       highlightActiveLine(),
       highlightSelectionMatches(),
-      EditorState.tabSize.of(EDITOR_DEFAULTS.tabSize),
-      indentUnit.of(' '.repeat(EDITOR_DEFAULTS.tabSize)),
+      indent.of(indentExt()),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -90,7 +98,7 @@
         indentWithTab,
       ]),
       oneDark,
-      theme,
+      look.of(lookExt()),
       lang.of([]),
       EditorState.readOnly.of(t.readonly),
       EditorView.editable.of(!t.readonly),
@@ -131,6 +139,18 @@
       view?.destroy();
       view = undefined;
     };
+  });
+
+  // Live settings: reconfigure the visible state now; stored states keep undo history.
+  $effect(() => {
+    const e = settings.value.editor;
+    void [e.fontSize, e.fontFamily, e.tabSize];
+    if (!view) return;
+    const effects = [look.reconfigure(lookExt()), indent.reconfigure(indentExt())];
+    view.dispatch({ effects });
+    for (const [p, st] of states) {
+      if (p !== currentPath) states.set(p, st.update({ effects }).state);
+    }
   });
 
   $effect(() => {
