@@ -43,6 +43,9 @@ pub fn plugin_enable_impl(settings_path: &Path, key: &str) -> Result<(), String>
         .entry("enabledPlugins")
         .or_insert_with(|| Value::Object(Map::new()));
     let plugins = plugins.as_object_mut().ok_or(INVALID)?;
+    if plugins.get(key) == Some(&Value::Bool(true)) {
+        return Ok(());
+    }
     plugins.insert(key.to_string(), Value::Bool(true));
 
     let mut out = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
@@ -110,6 +113,16 @@ mod tests {
         std::fs::write(&p, r#"{"model":"x"}"#).unwrap();
         plugin_enable_impl(&p, "caveman@caveman").unwrap();
         assert!(plugins_status_impl(&p).unwrap().caveman);
+    }
+
+    #[test]
+    fn plugin_enable_already_true_no_write() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        let raw = "{\"enabledPlugins\":{\"caveman@caveman\":true},   \"z\":1}";
+        std::fs::write(&p, raw).unwrap();
+        plugin_enable_impl(&p, "caveman@caveman").unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), raw.as_bytes());
     }
 
     #[test]

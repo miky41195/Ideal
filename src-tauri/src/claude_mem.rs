@@ -150,13 +150,17 @@ fn get_text(port: u16, path: &str, query: &[(&str, &str)]) -> Result<String, Str
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(3))
         .timeout(Duration::from_secs(3))
+        .redirects(0)
         .build();
     let mut req = agent.get(&format!("http://127.0.0.1:{port}{path}"));
     for (k, v) in query {
         req = req.query(k, v);
     }
     req.call()
-        .map_err(|_| DOWN.to_string())?
+        .map_err(|e| match e {
+            ureq::Error::Status(code, _) => format!("claude-mem errore HTTP {code}"),
+            _ => DOWN.to_string(),
+        })?
         .into_string()
         .map_err(|_| DOWN.to_string())
 }
@@ -193,7 +197,7 @@ pub fn summaries_impl(
 
 pub fn search_impl(port: u16, project: &str, query: &str) -> Result<String, String> {
     let t = get_text(port, "/api/search", &[("query", query), ("project", project)])?;
-    let v: Value = serde_json::from_str(&t).map_err(|e| e.to_string())?;
+    let v: Value = serde_json::from_str(&t).map_err(|_| "risposta di claude-mem non valida".to_string())?;
     Ok(v["content"][0]["text"].as_str().unwrap_or_default().to_string())
 }
 
@@ -210,8 +214,8 @@ pub fn start_worker_impl(base: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW | DETACHED_PROCESS
-        cmd.creation_flags(0x0800_0000 | 0x0000_0008);
+        // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+        cmd.creation_flags(0x0800_0000 | 0x0000_0200);
     }
     cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -326,6 +330,10 @@ mod tests {
     }
 
     fn stub(body: &'static str) -> (u16, std::thread::JoinHandle<String>) {
+        stub_status("200 OK", body)
+    }
+
+    fn stub_status(status: &'static str, body: &'static str) -> (u16, std::thread::JoinHandle<String>) {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         let h = std::thread::spawn(move || {
@@ -334,7 +342,8 @@ mod tests {
             let n = s.read(&mut buf).unwrap();
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
                 body.len(),
                 body
             );
@@ -361,6 +370,24 @@ mod tests {
         assert_eq!(search_impl(port, "P", "a b").unwrap(), "# Hit");
         let line = h.join().unwrap();
         assert!(line.contains("query=a%20b") || line.contains("query=a+b"), "{line}");
+    }
+
+    #[test]
+    fn http_status_error_is_not_down() {
+        let (port, _h) = stub_status("500 Internal Server Error", "{}");
+        assert_eq!(health_impl(port).unwrap_err(), "claude-mem errore HTTP 500");
+    }
+
+    #[test]
+    fn search_bad_json_italian_error() {
+        let (port, _h) = stub("not json");
+        assert_eq!(search_impl(port, "P", "q").unwrap_err(), "risposta di claude-mem non valida");
+    }
+
+    #[test]
+    fn redirect_not_followed() {
+        let (port, _h) = stub_status("302 Found", "{}");
+        assert_eq!(health_impl(port).unwrap_err(), "claude-mem errore HTTP 302");
     }
 
     #[test]
