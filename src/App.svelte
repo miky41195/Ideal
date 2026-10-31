@@ -18,6 +18,7 @@
   import { settings } from './lib/settings/settings.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { ask } from '@tauri-apps/plugin-dialog';
+  import { initGit } from './lib/git/git-store.svelte';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
 
   const project = new URLSearchParams(window.location.search).get('project');
@@ -53,7 +54,10 @@
     };
     window.addEventListener('keydown', onKey);
     let offClose: (() => void) | undefined;
+    let offGit: (() => void) | undefined;
+    let disposed = false;
     if (project) {
+      void initGit(project).then((f) => (disposed ? f() : (offGit = f)));
       void getCurrentWindow()
         .onCloseRequested(async (e) => {
           if (!hasUnsaved(tabs.tabs)) return;
@@ -66,6 +70,8 @@
         .then((f) => (offClose = f));
     }
     return () => {
+      disposed = true;
+      offGit?.();
       offClose?.();
       offs.forEach((f) => f());
       window.removeEventListener('keydown', onKey);

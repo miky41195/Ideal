@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::new())
         .manage(git::history::HeatmapCache::default())
+        .manage(git::watch::GitWatchers::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -40,6 +41,7 @@ pub fn run() {
             git::history::git_commit_files,
             git::history::git_heatmap,
             git::history::git_day_commits,
+            git::watch::git_watch,
             settings::get_settings,
             settings::settings_path,
             settings::get_recent,
@@ -53,6 +55,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
                 window.app_handle().state::<pty::PtyManager>().kill_owned_by(window.label());
+                window.app_handle().state::<git::watch::GitWatchers>().remove(window.label());
             }
         })
         .build(tauri::generate_context!())

@@ -3,6 +3,7 @@ pub mod history;
 pub mod ops;
 pub mod runner;
 pub mod status;
+pub mod watch;
 
 #[cfg(test)]
 pub fn test_repo() -> tempfile::TempDir {
