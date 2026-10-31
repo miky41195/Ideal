@@ -7,18 +7,27 @@
   import { showToast } from '../ui/toast.svelte';
 
   let open = $state(false);
+  let prevFocus: HTMLElement | null = null;
   let box: HTMLDivElement | undefined = $state();
 
   onMount(() =>
     onCommand('palette', async () => {
+      prevFocus = document.activeElement as HTMLElement | null;
       open = true;
       await tick();
       box?.focus();
     }),
   );
 
+  function close() {
+    open = false;
+    prevFocus?.focus?.();
+    prevFocus = null;
+  }
+
   async function openSettings() {
     open = false;
+    prevFocus = null; // the editor takes focus after opening
     try {
       await openFile(await settingsPath());
       ws.showEditor();
@@ -30,7 +39,7 @@
   function onkey(ev: KeyboardEvent) {
     if (ev.key === 'Escape') {
       ev.preventDefault();
-      open = false;
+      close();
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
       void openSettings();
@@ -40,7 +49,7 @@
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="backdrop" onclick={() => (open = false)}>
+  <div class="backdrop" onclick={close}>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
     <div class="box" tabindex="0" bind:this={box} onkeydown={onkey} onclick={(e) => e.stopPropagation()}>
       <button class="item active" onclick={openSettings}>Apri settings.json</button>

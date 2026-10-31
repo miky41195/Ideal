@@ -58,7 +58,7 @@
 
 {#if !project}
   <Welcome />
-{:else}
+{:else if settings.ready}
   <div class="shell">
     <TopBar {name} mode={ws.mode} ontoggle={() => ws.toggleMode()} />
     <div class="row">

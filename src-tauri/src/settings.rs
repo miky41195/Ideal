@@ -256,8 +256,13 @@ pub fn get_settings() -> SettingsWithWarning {
 pub fn ensure_settings_file(dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(err)?;
     let path = dir.join("settings.json");
-    if !path.exists() {
-        std::fs::write(&path, DEFAULTS_JSON).map_err(err)?;
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut f) => {
+            f.write_all(DEFAULTS_JSON.as_bytes()).map_err(err)?;
+            f.sync_all().map_err(err)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(err(e)),
     }
     Ok(path)
 }

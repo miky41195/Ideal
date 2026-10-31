@@ -7,7 +7,7 @@ param([string]$ProcessName = 'ideal')
 
 $TotalBudgetMB = 250
 $MainBudgetMB = 50
-$Excluded = @('claude*', 'pwsh*', 'powershell*', 'cmd*', 'conhost*')
+$Excluded = @('claude*', 'pwsh*', 'powershell*', 'cmd*', 'conhost*', 'OpenConsole*')
 
 $all = Get-CimInstance Win32_Process
 $byParent = $all | Group-Object ParentProcessId -AsHashTable -AsString
@@ -33,6 +33,8 @@ function Walk($proc, $isMain) {
   foreach ($c in @($byParent["$($proc.ProcessId)"])) {
     if ($null -eq $c) { continue }
     if (Test-Excluded $c.Name) { continue }
+    # PID reuse guard: a real child cannot predate its parent.
+    if ($c.CreationDate -lt $proc.CreationDate) { continue }
     Walk $c $false
   }
 }
@@ -42,7 +44,7 @@ $rows | Sort-Object MB -Descending | Format-Table PID, Name, MB -AutoSize
 
 $total = [math]::Round(($rows | Measure-Object MB -Sum).Sum, 1)
 $main = [math]::Round(($rows | Where-Object Main | Measure-Object MB -Sum).Sum, 1)
-$web = [math]::Round(($rows | Where-Object { $_.Name -like 'msedgewebview2*' } | Measure-Object MB -Sum).Sum, 1)
+$web = [math]::Round([double](($rows | Where-Object { $_.Name -like 'msedgewebview2*' } | Measure-Object MB -Sum).Sum), 1)
 
 Write-Host "Totale:          $total MB (budget < $TotalBudgetMB)"
 Write-Host "Ideal main:      $main MB (budget < $MainBudgetMB)"
