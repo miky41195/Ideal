@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
@@ -19,7 +19,7 @@ pub struct SessionMeta {
     pub entries: u32,
 }
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptEntry {
     pub kind: String,
@@ -48,12 +48,14 @@ pub struct MdFile {
 pub struct SessionCache {
     map: Mutex<HashMap<PathBuf, (SystemTime, u64, SessionMeta)>>,
     scans: AtomicUsize,
+    transcripts: Mutex<Vec<(PathBuf, SystemTime, u64, Arc<Vec<TranscriptEntry>>)>>,
+    parses: AtomicUsize,
 }
 
+const MAX_CACHED_TRANSCRIPTS: usize = 3;
+
 pub fn project_slug(path: &str) -> String {
-    path.chars()
-        .map(|c| if matches!(c, ':' | '\\' | '/') { '-' } else { c })
-        .collect()
+    path.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
 pub fn find_project_dir(claude_projects: &Path, project_path: &str) -> Option<PathBuf> {
@@ -109,6 +111,17 @@ fn is_entry_line(line: &str) -> bool {
     line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")
 }
 
+/// Cheap approximation of "yields at least one transcript entry".
+fn counts_as_entry(line: &str) -> bool {
+    if line.contains("\"type\":\"user\"") {
+        !line.contains("\"type\":\"tool_result\"") || line.contains("\"type\":\"text\"")
+    } else if line.contains("\"type\":\"assistant\"") {
+        line.contains("\"type\":\"text\"") || line.contains("\"type\":\"tool_use\"")
+    } else {
+        false
+    }
+}
+
 fn trunc_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
@@ -158,7 +171,7 @@ fn scan_session(path: &Path, id: &str, mtime: SystemTime) -> SessionMeta {
                         ai_title = Some(t.to_string());
                     }
                 }
-            } else if is_entry_line(&line) {
+            } else if counts_as_entry(&line) {
                 entries += 1;
                 if started.is_none() {
                     started = quick_ts(&line);
@@ -187,6 +200,7 @@ pub fn sessions_list_impl(
     };
     let Ok(rd) = std::fs::read_dir(&dir) else { return vec![] };
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for e in rd.filter_map(|e| e.ok()) {
         let p = e.path();
         if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
@@ -194,6 +208,7 @@ pub fn sessions_list_impl(
         }
         let Some(id) = p.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
         let Ok(md) = e.metadata() else { continue };
+        seen.insert(p.clone());
         let (mtime, len) = (md.modified().unwrap_or(SystemTime::UNIX_EPOCH), md.len());
         let hit = cache
             .map
@@ -213,12 +228,18 @@ pub fn sessions_list_impl(
         };
         out.push(meta);
     }
+    cache.map.lock().unwrap().retain(|k, _| k.parent() != Some(dir.as_path()) || seen.contains(k));
     out.sort_by(|a, b| b.updated.cmp(&a.updated));
     out
 }
 
 fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    let l = id.to_ascii_lowercase();
+    let dev = ["con", "prn", "aux", "nul"].contains(&l.as_str())
+        || ((l.starts_with("com") || l.starts_with("lpt"))
+            && l.len() == 4
+            && matches!(l.as_bytes()[3], b'1'..=b'9'));
+    !id.is_empty() && !dev && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 fn line_entries(v: &Value) -> Vec<TranscriptEntry> {
@@ -276,23 +297,10 @@ fn line_entries(v: &Value) -> Vec<TranscriptEntry> {
     }
 }
 
-pub fn session_read_impl(
-    claude_projects: &Path,
-    project_path: &str,
-    id: &str,
-    offset: u32,
-    limit: u32,
-) -> Result<TranscriptPage, String> {
-    if !valid_id(id) {
-        return Err("id sessione non valido".into());
-    }
-    let dir = find_project_dir(claude_projects, project_path).ok_or("sessione non trovata")?;
-    let f = std::fs::File::open(dir.join(format!("{id}.jsonl")))
-        .map_err(|_| "sessione non trovata".to_string())?;
+fn parse_transcript(path: &Path) -> Result<Vec<TranscriptEntry>, String> {
+    let f = std::fs::File::open(path).map_err(|_| "sessione non trovata".to_string())?;
     let mut r = BufReader::new(f);
     let mut buf = Vec::new();
-    let (lo, hi) = (offset as u64, offset as u64 + limit as u64);
-    let mut idx = 0u64;
     let mut entries = Vec::new();
     loop {
         buf.clear();
@@ -305,14 +313,53 @@ pub fn session_read_impl(
             continue;
         }
         let Ok(v) = serde_json::from_str::<Value>(line.trim()) else { continue };
-        for e in line_entries(&v) {
-            if idx >= lo && idx < hi {
-                entries.push(e);
-            }
-            idx += 1;
-        }
+        entries.extend(line_entries(&v));
     }
-    Ok(TranscriptPage { entries, total: idx as u32 })
+    Ok(entries)
+}
+
+pub fn session_read_impl(
+    claude_projects: &Path,
+    project_path: &str,
+    id: &str,
+    offset: u32,
+    limit: u32,
+    cache: &SessionCache,
+) -> Result<TranscriptPage, String> {
+    if !valid_id(id) {
+        return Err("id sessione non valido".into());
+    }
+    let dir = find_project_dir(claude_projects, project_path).ok_or("sessione non trovata")?;
+    let path = dir.join(format!("{id}.jsonl"));
+    let md = std::fs::metadata(&path).map_err(|_| "sessione non trovata".to_string())?;
+    if !md.is_file() {
+        return Err("sessione non trovata".into());
+    }
+    let (mtime, len) = (md.modified().unwrap_or(SystemTime::UNIX_EPOCH), md.len());
+    let hit = cache
+        .transcripts
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(p, m, l, _)| *p == path && *m == mtime && *l == len)
+        .map(|t| t.3.clone());
+    let all = match hit {
+        Some(a) => a,
+        None => {
+            cache.parses.fetch_add(1, Ordering::Relaxed);
+            let a = Arc::new(parse_transcript(&path)?);
+            let mut c = cache.transcripts.lock().unwrap();
+            c.retain(|(p, ..)| *p != path);
+            c.push((path, mtime, len, a.clone()));
+            if c.len() > MAX_CACHED_TRANSCRIPTS {
+                c.remove(0);
+            }
+            a
+        }
+    };
+    let start = (offset as usize).min(all.len());
+    let end = start.saturating_add(limit as usize).min(all.len());
+    Ok(TranscriptPage { entries: all[start..end].to_vec(), total: all.len() as u32 })
 }
 
 // ---------- memories / docs ----------
@@ -321,7 +368,9 @@ fn md_files(dir: &Path) -> Vec<MdFile> {
     let Ok(rd) = std::fs::read_dir(dir) else { return vec![] };
     let mut v: Vec<MdFile> = rd
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("md"))
+        .filter(|e| {
+            e.path().extension().and_then(|x| x.to_str()).is_some_and(|x| x.eq_ignore_ascii_case("md"))
+        })
         .filter_map(|e| {
             let md = e.metadata().ok()?;
             md.is_file().then(|| MdFile {
@@ -379,8 +428,9 @@ pub fn session_read(
     id: String,
     offset: u32,
     limit: u32,
+    cache: tauri::State<'_, SessionCache>,
 ) -> Result<TranscriptPage, String> {
-    session_read_impl(&claude_projects_dir()?, &project_path, &id, offset, limit)
+    session_read_impl(&claude_projects_dir()?, &project_path, &id, offset, limit, &cache)
 }
 
 #[tauri::command(async)]
@@ -452,6 +502,46 @@ mod tests {
     }
 
     #[test]
+    fn slug_non_alnum_to_dash() {
+        assert_eq!(project_slug("C:\\a b\\x_y.z\\\u{e8}"), "C--a-b-x-y-z--");
+    }
+
+    #[test]
+    fn read_cache_and_reserved_ids() {
+        let (d, dir) = setup();
+        let body: Vec<String> =
+            (0..5).map(|i| user(&format!("m{i}"), "2026-10-31T10:00:00.000Z")).collect();
+        fs::write(dir.join("s1.jsonl"), body.join("\n")).unwrap();
+        let c = SessionCache::default();
+        session_read_impl(d.path(), PP, "s1", 0, 2, &c).unwrap();
+        let p = session_read_impl(d.path(), PP, "s1", 2, 2, &c).unwrap();
+        assert_eq!(p.entries[0].text, "m2");
+        assert_eq!(c.parses.load(Ordering::Relaxed), 1);
+        for id in ["CON", "nul", "com1", "LPT9", "aux"] {
+            assert!(session_read_impl(d.path(), PP, id, 0, 1, &c).is_err(), "{id}");
+        }
+        for i in 0..5 {
+            fs::write(dir.join(format!("t{i}.jsonl")), "").unwrap();
+            session_read_impl(d.path(), PP, &format!("t{i}"), 0, 1, &c).unwrap();
+        }
+        assert_eq!(c.transcripts.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn list_prunes_removed_and_counts_like_read() {
+        let (d, dir) = setup();
+        let tr = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"o"}]}}"#;
+        fs::write(dir.join("a.jsonl"), format!("{}\n{tr}\n", user("x", "2026-10-31T10:00:00.000Z"))).unwrap();
+        fs::write(dir.join("b.jsonl"), user("y", "2026-10-31T10:00:00.000Z")).unwrap();
+        let c = SessionCache::default();
+        let l = sessions_list_impl(d.path(), PP, &c);
+        assert_eq!(l.iter().find(|s| s.id == "a").unwrap().entries, 1);
+        fs::remove_file(dir.join("b.jsonl")).unwrap();
+        sessions_list_impl(d.path(), PP, &c);
+        assert_eq!(c.map.lock().unwrap().len(), 1);
+    }
+
+    #[test]
     fn iso_parse() {
         assert_eq!(parse_iso_ms("1970-01-01T00:00:01.500Z"), Some(1500));
         assert_eq!(parse_iso_ms("2026-10-31T10:00:00.000Z"), Some(1_793_440_800_000));
@@ -519,7 +609,7 @@ mod tests {
     fn read_maps_kinds_and_skips_thinking_and_tool_results() {
         let (d, dir) = setup();
         fs::write(dir.join("s1.jsonl"), transcript()).unwrap();
-        let p = session_read_impl(d.path(), PP, "s1", 0, 100).unwrap();
+        let p = session_read_impl(d.path(), PP, "s1", 0, 100, &SessionCache::default()).unwrap();
         let kinds: Vec<_> = p.entries.iter().map(|e| e.kind.as_str()).collect();
         assert_eq!(kinds, ["user", "assistant", "tool"]);
         assert_eq!(p.total, 3);
@@ -537,7 +627,7 @@ mod tests {
             r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","name":"Bash","input":{{"command":"{big}"}}}}]}}}}"#
         );
         fs::write(dir.join("s1.jsonl"), line).unwrap();
-        let p = session_read_impl(d.path(), PP, "s1", 0, 10).unwrap();
+        let p = session_read_impl(d.path(), PP, "s1", 0, 10, &SessionCache::default()).unwrap();
         assert_eq!(p.entries[0].text.chars().count(), 300);
     }
 
@@ -547,7 +637,7 @@ mod tests {
         let body: Vec<String> =
             (0..25).map(|i| user(&format!("m{i}"), "2026-10-31T10:00:00.000Z")).collect();
         fs::write(dir.join("s1.jsonl"), body.join("\n")).unwrap();
-        let p = session_read_impl(d.path(), PP, "s1", 20, 10).unwrap();
+        let p = session_read_impl(d.path(), PP, "s1", 20, 10, &SessionCache::default()).unwrap();
         assert_eq!(p.entries.len(), 5);
         assert_eq!(p.total, 25);
         assert_eq!(p.entries[0].text, "m20");
@@ -557,7 +647,7 @@ mod tests {
     fn read_rejects_bad_id() {
         let (d, _) = setup();
         for id in ["", "../x", "a/b", "a.b", "a b"] {
-            assert!(session_read_impl(d.path(), PP, id, 0, 10).is_err(), "{id}");
+            assert!(session_read_impl(d.path(), PP, id, 0, 10, &SessionCache::default()).is_err(), "{id}");
         }
     }
 

@@ -156,13 +156,14 @@ fn get_text(port: u16, path: &str, query: &[(&str, &str)]) -> Result<String, Str
     for (k, v) in query {
         req = req.query(k, v);
     }
-    req.call()
-        .map_err(|e| match e {
-            ureq::Error::Status(code, _) => format!("claude-mem errore HTTP {code}"),
-            _ => DOWN.to_string(),
-        })?
-        .into_string()
-        .map_err(|_| DOWN.to_string())
+    let resp = req.call().map_err(|e| match e {
+        ureq::Error::Status(code, _) => format!("claude-mem errore HTTP {code}"),
+        _ => DOWN.to_string(),
+    })?;
+    if !(200..300).contains(&resp.status()) {
+        return Err(format!("claude-mem errore HTTP {}", resp.status()));
+    }
+    resp.into_string().map_err(|_| DOWN.to_string())
 }
 
 pub fn health_impl(port: u16) -> Result<bool, String> {
@@ -386,9 +387,8 @@ mod tests {
 
     #[test]
     fn redirect_not_followed() {
-        let (port, _h) = stub_status("302 Found", "{}");
-        // 3xx is returned as-is (never followed): body has no status "ok"
-        assert_eq!(health_impl(port), Ok(false));
+        let (port, _h) = stub_status("302 Found", r#"{"status":"ok"}"#);
+        assert_eq!(health_impl(port).unwrap_err(), "claude-mem errore HTTP 302");
     }
 
     #[test]
