@@ -1,38 +1,37 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { sessionRead, type TranscriptEntry } from './hub-client';
+  import { TranscriptPager } from './transcript-pager';
   import { renderMarkdown } from '../markdown/render';
   import { workspace } from '../state/workspace.svelte';
 
   let { projectPath, sessionId }: { projectPath: string; sessionId: string } = $props();
 
-  const LIMIT = 100;
   let entries = $state<TranscriptEntry[]>([]);
   let total = $state(0);
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  async function more() {
-    if (loading) return;
-    loading = true;
-    try {
-      const page = await sessionRead(projectPath, sessionId, entries.length, LIMIT);
-      entries = [...entries, ...page.entries];
-      total = page.total;
-      error = null;
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
-  }
+  const pager = new TranscriptPager(
+    async () => ({ entries: [], total: 0 }),
+    () => {
+      entries = pager.entries;
+      total = pager.total;
+      loading = pager.loading;
+      error = pager.error;
+    },
+  );
 
   $effect(() => {
-    void projectPath;
-    void sessionId;
-    entries = [];
-    total = 0;
-    void more();
+    const p = projectPath;
+    const id = sessionId;
+    untrack(() => {
+      pager.reset((offset, limit) => sessionRead(p, id, offset, limit));
+      void pager.more();
+    });
   });
+
+  const more = () => void pager.more();
 
   function resume() {
     workspace.addClaudeTab('resume', sessionId);

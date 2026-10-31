@@ -67,6 +67,15 @@ describe('HubState', () => {
     expect(openDoc).toHaveBeenCalledWith('search:foo', 'Ricerca claude-mem: foo', '# risultati');
   });
 
+  it('search failure goes to searchError only', async () => {
+    m.memSearch.mockRejectedValue('boom');
+    const h = new HubState();
+    h.projectPath = 'C:/x/Ideal';
+    await h.search('foo');
+    expect(h.searchError).toContain('boom');
+    expect(h.error.observations).toBeNull();
+  });
+
   describe('refreshOnActivity', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

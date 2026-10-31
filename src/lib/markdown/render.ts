@@ -1,7 +1,7 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-const ALLOWED_URI = /^(?:https?:|mailto:|#|\/|\.\/|\.\.\/)/i;
+const ALLOWED_URI = /^(?:https?:|mailto:|#|\/(?!\/)|\.\/|\.\.\/)/i;
 
 let hooked = false;
 function ensureHook() {
@@ -16,5 +16,5 @@ function ensureHook() {
 export function renderMarkdown(md: string): string {
   ensureHook();
   const html = marked.parse(md, { gfm: true, async: false }) as string;
-  return DOMPurify.sanitize(html, { ALLOWED_URI_REGEXP: ALLOWED_URI });
+  return DOMPurify.sanitize(html, { ALLOWED_URI_REGEXP: ALLOWED_URI, FORBID_TAGS: ['img'] });
 }

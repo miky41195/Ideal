@@ -20,4 +20,10 @@ describe('renderMarkdown', () => {
     expect(h).toContain('<code');
     expect(h).toContain('rel="noopener"');
   });
+  it('forbids images (no automatic network)', () => {
+    expect(renderMarkdown('![x](https://example.com/a.png)')).not.toContain('<img');
+  });
+  it('rejects protocol-relative links', () => {
+    expect(renderMarkdown('[x](//evil.com/a)')).not.toContain('//evil.com');
+  });
 });

@@ -23,6 +23,7 @@ export class HubState {
   error = $state<Record<Section, string | null>>(emptyErrors());
   memStatus = $state<'unknown' | 'up' | 'down'>('unknown');
   query = $state('');
+  searchError = $state<string | null>(null);
 
   private activity = debounce(() => void this.refresh(), 2000);
 
@@ -105,13 +106,14 @@ export class HubState {
   /** Filters sessions/memories/docs by title (see filtered*) and asks claude-mem, showing the result as a doc tab. */
   async search(q: string): Promise<void> {
     this.query = q;
+    this.searchError = null;
     const t = q.trim();
     if (!t) return;
     try {
       const md = await c.memSearch(this.port, this.project, t);
       tabs.openDoc(`search:${t}`, `Ricerca claude-mem: ${t}`, md);
     } catch (e) {
-      this.error.observations = String(e);
+      this.searchError = String(e);
     }
   }
 
