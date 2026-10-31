@@ -91,3 +91,20 @@ describe('GitState errors', () => {
     expect(g.error).toBe('rifiutato');
   });
 });
+
+describe('GitState re-entrancy', () => {
+  it('run returns false without running fn while busy', async () => {
+    status.mockResolvedValue(st('main'));
+    const g = new GitState();
+    g.path = '/p';
+    let release!: () => void;
+    const first = g.run('a', () => new Promise<void>((r) => (release = r)));
+    const fn = vi.fn(async () => {});
+    expect(await g.run('b', fn)).toBe(false);
+    expect(fn).not.toHaveBeenCalled();
+    expect(g.busy).toBe('a');
+    release();
+    expect(await first).toBe(true);
+    expect(g.busy).toBeNull();
+  });
+});

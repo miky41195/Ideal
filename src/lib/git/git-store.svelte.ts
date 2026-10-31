@@ -44,6 +44,7 @@ export class GitState {
 
   /** Runs a git action: sets busy/error, always refreshes afterwards. */
   async run(label: string, fn: () => Promise<unknown>): Promise<boolean> {
+    if (this.busy) return false;
     this.busy = label;
     this.error = null;
     let ok = true;

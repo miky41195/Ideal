@@ -16,6 +16,14 @@
   let creating = $state(false);
   let newName = $state('');
 
+  let branchEl = $state<HTMLElement | null>(null);
+  function onWindowDown(e: MouseEvent) {
+    if (branchOpen && branchEl && !branchEl.contains(e.target as Node)) branchOpen = false;
+  }
+  function onWindowKey(e: KeyboardEvent) {
+    if (e.key === 'Escape' && branchOpen) branchOpen = false;
+  }
+
   const st = $derived(git.status);
   const groups = $derived(groupFiles(st?.files ?? []));
   const canCommit = $derived(message.trim().length > 0 && groups.staged.length > 0 && !git.busy);
@@ -115,28 +123,34 @@
     git.run(label, () => fn(git.path));
 </script>
 
+<svelte:window onmousedown={onWindowDown} onkeydown={onWindowKey} />
+
 <div class="panel">
   {#if git.error}
     <div class="bar err" role="alert">
       <span>{git.error}</span>
-      <button class="icon" title="Chiudi" onclick={() => (git.error = null)}>×</button>
+      <button class="icon" title="Chiudi" aria-label="Chiudi errore" onclick={() => (git.error = null)}>×</button>
     </div>
   {/if}
 
   {#if git.statusError}
-    <p class="msg">{git.statusError}</p>
-  {:else if st && !st.isRepo}
+    <p class="msg err-inline">{git.statusError}</p>
+  {/if}
+
+  {#if !st}
+    {#if !git.statusError}<p class="msg">Caricamento…</p>{/if}
+  {:else if !st.isRepo}
     <p class="msg">Non è un repository git</p>
   {:else if st}
     <div class="head">
-      <div class="branch">
+      <div class="branch" bind:this={branchEl}>
         <button class="bbtn" onclick={toggleBranches} title="Cambia branch">
           {st.branch ?? '(detached)'} ▾
         </button>
         {#if branchOpen}
           <div class="drop">
             {#each branches as b (b.name)}
-              <button class:cur={b.current} onclick={() => pickBranch(b.name)}>{b.name}</button>
+              <button class:cur={b.current} disabled={!!git.busy} onclick={() => pickBranch(b.name)}>{b.name}</button>
             {/each}
             {#if creating}
               <!-- svelte-ignore a11y_autofocus -->
@@ -150,7 +164,7 @@
                 }}
               />
             {:else}
-              <button onclick={() => (creating = true)}>+ Nuovo branch…</button>
+              <button disabled={!!git.busy} onclick={() => (creating = true)}>+ Nuovo branch…</button>
             {/if}
           </div>
         {/if}
@@ -178,23 +192,36 @@
         <div class="sec">
           <span>{s.title} ({s.files.length})</span>
           {#if s.key === 'staged'}
-            <button class="icon" title="Rimuovi tutto dallo stage" onclick={() => unstage(s.files)}>−</button>
+            <button class="icon" title="Rimuovi tutto dallo stage" aria-label="Rimuovi tutto dallo stage" disabled={!!git.busy} onclick={() => unstage(s.files)}>−</button>
           {:else if s.key !== 'conflict'}
-            <button class="icon" title="Aggiungi tutto allo stage" onclick={() => stage(s.files)}>+</button>
+            <button class="icon" title="Aggiungi tutto allo stage" aria-label="Aggiungi tutto allo stage" disabled={!!git.busy} onclick={() => stage(s.files)}>+</button>
           {/if}
         </div>
         {#each s.files as f (s.key + ':' + f.path)}
-          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <div class="row" onclick={() => openDiff(f)} title={f.path}>
+          <div
+            class="row"
+            role="button"
+            tabindex="0"
+            onclick={() => openDiff(f)}
+            onkeydown={(e) => {
+              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                void openDiff(f);
+              }
+            }}
+            title={f.path}
+          >
             <span class="let {letterClass(f)}">{statusLetter(f)}</span>
             <span class="name">{base(f.path)}</span>
             <span class="dir">{dir(f.path)}</span>
             <span class="acts">
               {#if s.key === 'staged'}
-                <button class="icon" title="Rimuovi dallo stage" onclick={(e) => { e.stopPropagation(); void unstage([f]); }}>−</button>
+                <button class="icon" title="Rimuovi dallo stage" aria-label="Rimuovi dallo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void unstage([f]); }}>−</button>
               {:else}
-                <button class="icon" title="Scarta" onclick={(e) => { e.stopPropagation(); void discard(f); }}>↺</button>
-                <button class="icon" title="Aggiungi allo stage" onclick={(e) => { e.stopPropagation(); void stage([f]); }}>+</button>
+                {#if s.key !== 'conflict'}
+                  <button class="icon" title="Scarta" aria-label="Scarta modifiche" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void discard(f); }}>↺</button>
+                {/if}
+                <button class="icon" title="Aggiungi allo stage" aria-label="Aggiungi allo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void stage([f]); }}>+</button>
               {/if}
             </span>
           </div>
@@ -213,6 +240,7 @@
   .bar { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; margin: 0 8px 6px; border-radius: 5px; }
   .err { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); border: 1px solid var(--danger); word-break: break-word; }
   .bar span { flex: 1; }
+  .err-inline { color: var(--danger); word-break: break-word; }
   .head { padding: 0 8px 6px; display: flex; flex-direction: column; gap: 6px; }
   .branch { position: relative; }
   .bbtn { width: 100%; text-align: left; background: var(--panel-2); border-color: var(--border); padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -243,7 +271,8 @@
   .lD, .lU { color: var(--danger); }
   .lq { color: var(--text-dim); }
   .acts { display: none; gap: 2px; margin-left: auto; }
-  .row:hover .acts { display: flex; }
+  .row:hover .acts, .row:focus-within .acts { display: flex; }
+  .row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .icon { padding: 0 6px; line-height: 18px; }
   .icon:hover { background: var(--panel-2); }
 </style>
