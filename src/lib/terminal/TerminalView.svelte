@@ -18,12 +18,14 @@
     visible = true,
     onexit,
     onerror,
+    onspawn,
   }: {
     kind: PtyKind;
     cwd: string;
     visible?: boolean;
     onexit?: (code: number | null) => void;
     onerror?: (msg: string) => void;
+    onspawn?: (ptyId: number) => void;
   } = $props();
 
   let host: HTMLDivElement;
@@ -105,6 +107,7 @@
         ptyId = id;
         lastSent = initial;
         refit();
+        onspawn?.(id);
       })
       .catch((e) => {
         if (destroyed) return;

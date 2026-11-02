@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import TerminalView from '../terminal/TerminalView.svelte';
+  import { writePty } from '../terminal/pty-client';
+  import { setClaudeSender } from './send-bridge';
   import type { PtyKind } from '../terminal/pty-client';
   import type { ClaudeTab, Workspace } from '../state/workspace.svelte';
 
@@ -15,12 +18,40 @@
     return { type: 'Claude', resume: null, continue_last: false };
   }
 
+  // PTY ids per tab (plain maps: not rendered). Waiters resolve once a tab's PTY has spawned.
+  const ptys = new Map<string, number>();
+  const waiters = new Map<string, ((id: number) => void)[]>();
+
+  function spawned(tabId: string, ptyId: number) {
+    ptys.set(tabId, ptyId);
+    waiters.get(tabId)?.forEach((r) => r(ptyId));
+    waiters.delete(tabId);
+  }
+
+  function ptyFor(tabId: string): Promise<number> {
+    const id = ptys.get(tabId);
+    if (id !== undefined) return Promise.resolve(id);
+    return new Promise((r) => waiters.set(tabId, [...(waiters.get(tabId) ?? []), r]));
+  }
+
+  // Types text into the active Claude (no Enter), creating a tab first if there is none.
+  onMount(() =>
+    setClaudeSender(async (text) => {
+      const tab = ws.activeClaudeTab ?? ws.addClaudeTab('new');
+      ws.showClaude();
+      await writePty(await ptyFor(tab.id), text);
+    }),
+  );
+
   function close(id: string) {
+    ptys.delete(id);
+    waiters.delete(id);
     delete status[id];
     ws.closeClaudeTab(id);
   }
 
   function restart(id: string) {
+    ptys.delete(id);
     status[id] = { gen: st(id).gen + 1 };
   }
 </script>
@@ -51,6 +82,7 @@
             kind={kindOf(t)}
             {cwd}
             visible={shown}
+            onspawn={(pid) => spawned(t.id, pid)}
             onexit={() => (status[t.id] = { ...st(t.id), exited: true })}
             onerror={(m) => (status[t.id] = { ...st(t.id), error: m })}
           />

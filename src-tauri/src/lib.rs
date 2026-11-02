@@ -29,6 +29,8 @@ pub fn run() {
             fs_cmds::create_dir,
             fs_cmds::rename_path,
             fs_cmds::delete_path,
+            fs_cmds::gitignore_add,
+            git::ops::git_is_ignored,
             git::status::git_status,
             git::ops::git_stage,
             git::ops::git_unstage,

@@ -165,7 +165,41 @@ pub fn delete_path_with(
     remover(path)
 }
 
+/// Appends `entry` to `<project>/.gitignore` unless an equivalent line exists
+/// (ignoring surrounding whitespace and leading/trailing slashes). Creates the
+/// file if missing and keeps the file's existing EOL style.
+pub fn gitignore_add_impl(project: &Path, entry: &str) -> Result<(), String> {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return Err("voce vuota".to_string());
+    }
+    let path = project.join(".gitignore");
+    let existing = match fs::read(&path) {
+        Ok(b) => classify_bytes(b).map_err(|r| r.to_string())?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(err(e)),
+    };
+    let norm = |l: &str| l.trim().trim_matches('/').to_string();
+    let want = norm(entry);
+    if existing.lines().any(|l| !l.trim_start().starts_with('#') && norm(l) == want) {
+        return Ok(());
+    }
+    let eol = detect_eol(&existing);
+    let mut out = normalize_to_lf(&existing);
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(entry);
+    out.push('\n');
+    write_text_file_impl(&path, &out, eol)
+}
+
 // ---------- commands ----------
+
+#[tauri::command(async)]
+pub fn gitignore_add(project_path: String, entry: String) -> Result<(), String> {
+    gitignore_add_impl(Path::new(&project_path), &entry)
+}
 
 #[tauri::command(async)]
 pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
@@ -399,5 +433,63 @@ mod tests {
         fs::write(&b, "2").unwrap();
         assert!(rename_path_impl(&a, &b).is_err());
         assert_eq!(fs::read_to_string(&b).unwrap(), "2");
+    }
+
+    #[test]
+    fn gitignore_add_creates_file() {
+        let d = tempdir().unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        assert_eq!(fs::read_to_string(d.path().join(".gitignore")).unwrap(), ".ideal/
+");
+    }
+
+    #[test]
+    fn gitignore_add_idempotent() {
+        let d = tempdir().unwrap();
+        let f = d.path().join(".gitignore");
+        fs::write(&f, "target
+/.ideal
+").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "target
+/.ideal
+");
+        fs::write(&f, "target").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "target
+.ideal/
+");
+    }
+
+    #[test]
+    fn gitignore_add_crlf_preserved() {
+        let d = tempdir().unwrap();
+        let f = d.path().join(".gitignore");
+        fs::write(&f, "target
+node_modules").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        assert_eq!(
+            fs::read_to_string(&f).unwrap(),
+            "target
+node_modules
+.ideal/
+"
+        );
+    }
+
+    #[test]
+    fn gitignore_add_ignores_comments_and_negations() {
+        let d = tempdir().unwrap();
+        let f = d.path().join(".gitignore");
+        fs::write(&f, "# .ideal/
+!.ideal/
+").unwrap();
+        gitignore_add_impl(d.path(), ".ideal/").unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "# .ideal/
+!.ideal/
+.ideal/
+");
     }
 }
