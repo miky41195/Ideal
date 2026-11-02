@@ -67,3 +67,14 @@ describe('notes-model', () => {
     expect(editItem(MIXED, 2, '  ')).toBe(MIXED);
   });
 });
+
+import { findItemLine } from './notes-model';
+
+describe('findItemLine', () => {
+  it('returns the item only if line and text still match', () => {
+    expect(findItemLine(MIXED, 2, 'uno')).toEqual({ line: 2, done: false, text: 'uno' });
+    expect(findItemLine(MIXED, 2, 'altro')).toBeNull();
+    expect(findItemLine(MIXED, 4, 'testo libero')).toBeNull();
+    expect(findItemLine(MIXED, 99, 'uno')).toBeNull();
+  });
+});

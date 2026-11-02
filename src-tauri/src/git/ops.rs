@@ -442,8 +442,7 @@ mod tests {
         let r = test_repo();
         let p = r.path();
         assert!(!is_ignored_impl(p, ".ideal/notes.md").unwrap());
-        fs::write(p.join(".gitignore"), ".ideal/
-").unwrap();
+        fs::write(p.join(".gitignore"), ".ideal/\n").unwrap();
         assert!(is_ignored_impl(p, ".ideal/notes.md").unwrap());
         assert!(!is_ignored_impl(p, "src/a.txt").unwrap());
         let plain = tempfile::tempdir().unwrap();

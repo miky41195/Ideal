@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { parseNotes, toggle, addItem, removeItem, editItem, type NoteItem } from './notes-model';
+  import { parseNotes, toggle, addItem, removeItem, editItem, findItemLine, type NoteItem } from './notes-model';
+  import { createQueue } from './serial-queue';
   import { loadNotes, saveNotes, isIdealIgnored, ignoreIdeal } from './notes-client';
   import { sendToActiveClaude } from '../claude/send-bridge';
   import { onTerminalActivity, debounce } from '../terminal/activity';
@@ -13,35 +14,48 @@
   let editing = $state<number | null>(null);
   let editText = $state('');
   let error = $state<string | null>(null);
-  let busy = false;
+  let editOrig = '';
+  // All file access (reloads and writes) goes through one queue: no lost writes, no stale overwrites.
+  const enqueue = createQueue();
 
   const items = $derived<NoteItem[]>(parseNotes(md));
 
-  async function reload() {
-    // Never clobber an inline edit or a write in flight.
-    if (editing !== null || busy) return;
-    md = (await loadNotes(projectPath)).md;
+  function reload() {
+    return enqueue(async () => {
+      if (editing !== null) return; // never clobber an inline edit
+      try {
+        md = (await loadNotes(projectPath)).md;
+      } catch (e) {
+        error = String(e);
+      }
+    });
   }
 
   async function checkIgnored() {
     ignored = await isIdealIgnored(projectPath).catch(() => true);
   }
 
-  // Read fresh, transform, write: keeps external edits that happened since the last reload.
-  async function mutate(fn: (md: string) => string) {
-    busy = true;
-    error = null;
-    try {
-      const cur = await loadNotes(projectPath);
-      const next = fn(cur.md);
-      if (next !== cur.md) await saveNotes(projectPath, next, cur.eol);
-      md = next;
-    } catch (e) {
-      error = String(e);
-    } finally {
-      busy = false;
-    }
+  // Read fresh, verify the target line is still the one the user acted on, transform, write.
+  function mutate(fn: (md: string) => string, target?: { line: number; text: string }) {
+    return enqueue(async () => {
+      error = null;
+      try {
+        const cur = await loadNotes(projectPath);
+        if (target && !findItemLine(cur.md, target.line, target.text)) {
+          md = cur.md;
+          error = 'La nota è cambiata, riprova';
+          return;
+        }
+        const next = fn(cur.md);
+        if (next !== cur.md) await saveNotes(projectPath, next, cur.eol);
+        md = next;
+      } catch (e) {
+        error = String(e);
+      }
+    });
   }
+
+  const act = (it: NoteItem, fn: (md: string) => string) => mutate(fn, { line: it.line, text: it.text });
 
   async function add() {
     const t = draft.trim();
@@ -53,6 +67,7 @@
   function startEdit(it: NoteItem) {
     editing = it.line;
     editText = it.text;
+    editOrig = it.text;
   }
 
   async function commitEdit() {
@@ -60,7 +75,7 @@
     const line = editing;
     const t = editText;
     editing = null;
-    await mutate((m) => editItem(m, line, t));
+    await mutate((m) => editItem(m, line, t), { line, text: editOrig });
   }
 
   async function send(it: NoteItem) {
@@ -115,7 +130,7 @@
           type="checkbox"
           checked={it.done}
           aria-label="Completata: {it.text}"
-          onchange={() => mutate((m) => toggle(m, it.line))}
+          onchange={() => act(it, (m) => toggle(m, it.line))}
         />
         {#if editing === it.line}
           <!-- svelte-ignore a11y_autofocus -->
@@ -141,7 +156,7 @@
             onkeydown={(e) => e.key === 'F2' && startEdit(it)}>{it.text}</span
           >
           <button class="ic" title="Invia a Claude" aria-label="Invia a Claude: {it.text}" onclick={() => send(it)}>➤</button>
-          <button class="ic" title="Elimina" aria-label="Elimina: {it.text}" onclick={() => mutate((m) => removeItem(m, it.line))}>✕</button>
+          <button class="ic" title="Elimina" aria-label="Elimina: {it.text}" onclick={() => act(it, (m) => removeItem(m, it.line))}>✕</button>
         {/if}
       </div>
     {:else}

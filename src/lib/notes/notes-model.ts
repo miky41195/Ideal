@@ -59,3 +59,8 @@ export function addItem(md: string, text: string): string {
   const base = /\r?\n$/.test(md) ? md : md + eol;
   return `${base}- [ ] ${t}${eol}`;
 }
+
+/** The item at `line` only if it still has the expected text (guards against a file changed under us). */
+export function findItemLine(md: string, line: number, text: string): NoteItem | null {
+  return parseNotes(md).find((i) => i.line === line && i.text === text) ?? null;
+}

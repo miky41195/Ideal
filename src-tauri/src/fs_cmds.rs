@@ -439,43 +439,32 @@ mod tests {
     fn gitignore_add_creates_file() {
         let d = tempdir().unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
-        assert_eq!(fs::read_to_string(d.path().join(".gitignore")).unwrap(), ".ideal/
-");
+        assert_eq!(fs::read_to_string(d.path().join(".gitignore")).unwrap(), ".ideal/\n");
     }
 
     #[test]
     fn gitignore_add_idempotent() {
         let d = tempdir().unwrap();
         let f = d.path().join(".gitignore");
-        fs::write(&f, "target
-/.ideal
-").unwrap();
+        fs::write(&f, "target\n/.ideal\n").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
-        assert_eq!(fs::read_to_string(&f).unwrap(), "target
-/.ideal
-");
+        assert_eq!(fs::read_to_string(&f).unwrap(), "target\n/.ideal\n");
         fs::write(&f, "target").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
-        assert_eq!(fs::read_to_string(&f).unwrap(), "target
-.ideal/
-");
+        assert_eq!(fs::read_to_string(&f).unwrap(), "target\n.ideal/\n");
     }
 
     #[test]
     fn gitignore_add_crlf_preserved() {
         let d = tempdir().unwrap();
         let f = d.path().join(".gitignore");
-        fs::write(&f, "target
-node_modules").unwrap();
+        fs::write(&f, "target\r\nnode_modules").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
         assert_eq!(
-            fs::read_to_string(&f).unwrap(),
-            "target
-node_modules
-.ideal/
-"
+            fs::read(&f).unwrap(),
+            b"target\r\nnode_modules\r\n.ideal/\r\n".to_vec()
         );
     }
 
@@ -483,13 +472,8 @@ node_modules
     fn gitignore_add_ignores_comments_and_negations() {
         let d = tempdir().unwrap();
         let f = d.path().join(".gitignore");
-        fs::write(&f, "# .ideal/
-!.ideal/
-").unwrap();
+        fs::write(&f, "# .ideal/\n!.ideal/\n").unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
-        assert_eq!(fs::read_to_string(&f).unwrap(), "# .ideal/
-!.ideal/
-.ideal/
-");
+        assert_eq!(fs::read_to_string(&f).unwrap(), "# .ideal/\n!.ideal/\n.ideal/\n");
     }
 }
