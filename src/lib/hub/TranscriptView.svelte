@@ -54,7 +54,7 @@
         <div class="tool">⚙ {e.tool ?? 'tool'}</div>
       {:else}
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="bubble {e.kind === 'user' ? 'user' : 'assistant'}" {onclick}>{@html renderMarkdown(e.text)}</div>
+        <div class="bubble {e.kind === 'user' ? 'user' : 'assistant'}" {onclick} onsubmit={(e) => e.preventDefault()}>{@html renderMarkdown(e.text)}</div>
       {/if}
     {/each}
     {#if error}<div class="err" role="alert">{error}</div>{/if}

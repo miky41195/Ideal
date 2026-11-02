@@ -45,8 +45,6 @@
     const offs = [
       tabs.onSaved(() => void git.refresh()),
       onTerminalActivity(idleRefresh),
-      onTerminalActivity(() => hub.refreshOnActivity()),
-      () => hub.cancelActivity(),
       idleRefresh.cancel,
       onCommand('toggleMode', () => ws.toggleMode()),
       onCommand('togglePanel', () => ws.togglePanel()),

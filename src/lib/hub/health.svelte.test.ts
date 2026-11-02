@@ -58,6 +58,34 @@ describe('HealthState', () => {
     expect(h.mem).toBe('down');
   });
 
+  it('auto-start backs off 10 min after a failure; manual start still works', async () => {
+    const h = new HealthState();
+    h.mem = 'down';
+    m.memStartWorker.mockRejectedValue('x');
+    await h.autoStart();
+    await h.autoStart();
+    expect(m.memStartWorker).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+    await h.autoStart();
+    expect(m.memStartWorker).toHaveBeenCalledTimes(1);
+    await h.ensureWorker();
+    expect(m.memStartWorker).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1);
+    await h.autoStart();
+    expect(m.memStartWorker).toHaveBeenCalledTimes(3);
+  });
+
+  it('auto-start backs off also when the worker never comes up', async () => {
+    const h = new HealthState();
+    h.mem = 'down';
+    m.memHealth.mockResolvedValue(false);
+    await h.autoStart();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(h.mem).toBe('down');
+    await h.autoStart();
+    expect(m.memStartWorker).toHaveBeenCalledTimes(1);
+  });
+
   it('check isolates plugin error from mem status', async () => {
     const h = new HealthState();
     m.pluginsStatus.mockRejectedValue('no settings');

@@ -9,6 +9,10 @@ describe('send-bridge', () => {
     expect(toPtyText('  ciao  ')).toBe('ciao');
   });
 
+  it('toPtyText strips ESC, ETX, DEL and other control chars', () => {
+    expect(toPtyText('a\x1b[31mb\x03c\x7fd\te')).toBe('a [31mb c d e');
+  });
+
   it('forwards sanitized text to the registered sender', async () => {
     const fn = vi.fn().mockResolvedValue(undefined);
     setClaudeSender(fn);

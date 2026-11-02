@@ -138,7 +138,7 @@ export class Tabs {
   /** Opens (or refreshes and focuses) a read-only rendered-markdown tab keyed by `id`. */
   openDoc(id: string, title: string, markdown: string, sourcePath?: string): void {
     this.noteFile();
-    const existing = this.tabs.find((t) => t.path === id);
+    const existing = this.tabs.find((t) => t.path === id && t.kind === 'doc');
     if (existing) {
       existing.doc = { markdown, sourcePath };
       existing.name = title;

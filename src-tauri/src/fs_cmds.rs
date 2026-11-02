@@ -173,6 +173,9 @@ pub fn gitignore_add_impl(project: &Path, entry: &str) -> Result<(), String> {
     if entry.is_empty() {
         return Err("voce vuota".to_string());
     }
+    if entry.contains('\r') || entry.contains('\n') {
+        return Err("voce non valida".to_string());
+    }
     let path = project.join(".gitignore");
     let existing = match fs::read(&path) {
         Ok(b) => classify_bytes(b).map_err(|r| r.to_string())?,
@@ -440,6 +443,14 @@ mod tests {
         let d = tempdir().unwrap();
         gitignore_add_impl(d.path(), ".ideal/").unwrap();
         assert_eq!(fs::read_to_string(d.path().join(".gitignore")).unwrap(), ".ideal/\n");
+    }
+
+    #[test]
+    fn gitignore_add_rejects_newlines() {
+        let d = tempdir().unwrap();
+        assert!(gitignore_add_impl(d.path(), "a\nb").is_err());
+        assert!(gitignore_add_impl(d.path(), "a\rb").is_err());
+        assert!(!d.path().join(".gitignore").exists());
     }
 
     #[test]

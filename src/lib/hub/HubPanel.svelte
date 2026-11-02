@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { onTerminalActivity } from '../terminal/activity';
   import { hub } from './hub-store.svelte';
   import { health } from './health.svelte';
   import { relativeDate } from './dates';
@@ -15,6 +16,8 @@
   let q = $state(hub.query);
   let actionError = $state<string | null>(null);
   const starting = $derived(health.mem === 'starting');
+  const memDown = $derived(health.mem === 'down' || health.mem === 'starting');
+  const memError = $derived(hub.error.observations ?? hub.error.summaries);
 
   const port = $derived(settings.value.claudeMem.port);
   const isState = (f: MdFile) => /^STATO-PROGETTO/i.test(f.name);
@@ -24,8 +27,12 @@
     void hub.refresh();
     const onFocus = () => void hub.refresh();
     window.addEventListener('focus', onFocus);
+    // Only while the Hub is mounted: a hidden Hub must not re-read session files on terminal pauses.
+    const offActivity = onTerminalActivity(() => hub.refreshOnActivity());
     return () => {
       window.removeEventListener('focus', onFocus);
+      offActivity();
+      hub.cancelActivity();
     };
   });
 
@@ -52,7 +59,7 @@
     actionError = null;
     try {
       const t = await readTextFile(f.path);
-      tabs.openDoc(f.path, f.name, t.content, f.path);
+      tabs.openDoc(`md:${f.path}`, f.name, t.content, f.path);
       shown();
     } catch (e) {
       actionError = String(e);
@@ -71,6 +78,15 @@
     if (health.mem === 'up' && hub.memStatus !== 'up') {
       void hub.refresh('observations');
       void hub.refresh('summaries');
+    }
+  });
+  // A call failed because the worker is gone: re-check once per distinct error so health.mem catches up.
+  let checkedFor: string | null = null;
+  $effect(() => {
+    const e = memError;
+    if (e && e.includes('claude-mem non attivo') && e !== checkedFor) {
+      checkedFor = e;
+      void health.check();
     }
   });
   async function browser() {
@@ -118,15 +134,19 @@
         <span>{open.mem ? '▾' : '▸'} Memoria claude-mem</span><span class="count">{hub.observations.length}</span>
       </button>
       {#if open.mem}
-        {#if hub.memStatus === 'down'}
+        {#if memDown}
           <div class="down">
             <div>claude-mem non attivo</div>
+            {#if hub.error.observations}<div class="err">{hub.error.observations}</div>{/if}
+            {#if hub.error.summaries}<div class="err">{hub.error.summaries}</div>{/if}
             <div class="btns">
               <button onclick={start} disabled={starting}>{starting ? 'Avvio…' : 'Avvia'}</button>
               <button onclick={browser}>Apri nel browser</button>
             </div>
           </div>
         {:else}
+          {#if hub.error.observations}<div class="err">{hub.error.observations}</div>{/if}
+          {#if hub.error.summaries}<div class="err">{hub.error.summaries}</div>{/if}
           {#each hub.observations as o (o.id)}
             <div class="row" role="button" tabindex="0" onclick={() => openObs(o)} onkeydown={(e) => keyAct(e, () => openObs(o))}>
               <span class="badge">{o.kind}</span><span class="t">{o.title}</span><span class="d">{relativeDate(o.createdAtEpoch)}</span>

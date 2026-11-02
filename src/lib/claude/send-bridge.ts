@@ -2,9 +2,9 @@
 type Sender = (text: string) => Promise<void>;
 let sender: Sender | null = null;
 
-/** Strips CR/LF so the text can never submit the prompt. */
+/** Strips all control chars (CR/LF submit, ESC/ETX inject terminal sequences) so typed text stays inert. */
 export function toPtyText(text: string): string {
-  return text.replace(/[\r\n]+/g, ' ').trim();
+  return text.replace(/[\x00-\x1f\x7f]+/g, ' ').trim();
 }
 
 export function setClaudeSender(fn: Sender | null): () => void {
