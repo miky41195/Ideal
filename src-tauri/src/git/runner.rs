@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-fn run_bytes(cwd: &Path, args: &[&str], no_locks: bool) -> Result<Vec<u8>, String> {
+fn base_cmd(cwd: &Path, args: &[&str], no_locks: bool) -> Command {
     let mut cmd = Command::new("git");
     cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false"])
         .args(args)
@@ -23,13 +23,30 @@ fn run_bytes(cwd: &Path, args: &[&str], no_locks: bool) -> Result<Vec<u8>, Strin
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = cmd.output().map_err(|e| {
-        if e.kind() == ErrorKind::NotFound {
-            "git non trovato".to_string()
-        } else {
-            e.to_string()
-        }
-    })?;
+    cmd
+}
+
+fn spawn_err(e: std::io::Error) -> String {
+    if e.kind() == ErrorKind::NotFound {
+        "git non trovato".to_string()
+    } else {
+        e.to_string()
+    }
+}
+
+/// Runs git and returns `(exit code, trimmed stderr)` without treating non-zero as failure.
+pub fn git_exit(cwd: &Path, args: &[&str]) -> Result<(i32, String), String> {
+    let out = base_cmd(cwd, args, true)
+        .env("GIT_LITERAL_PATHSPECS", "0") // check-ignore rejects literal pathspecs
+        .output().map_err(spawn_err)?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stderr).trim().to_string(),
+    ))
+}
+
+fn run_bytes(cwd: &Path, args: &[&str], no_locks: bool) -> Result<Vec<u8>, String> {
+    let out = base_cmd(cwd, args, no_locks).output().map_err(spawn_err)?;
     if out.status.success() {
         Ok(out.stdout)
     } else {

@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import TerminalView from '../terminal/TerminalView.svelte';
+  import { writePty } from '../terminal/pty-client';
+  import { setClaudeSender } from './send-bridge';
   import type { PtyKind } from '../terminal/pty-client';
   import type { ClaudeTab, Workspace } from '../state/workspace.svelte';
 
@@ -15,12 +18,46 @@
     return { type: 'Claude', resume: null, continue_last: false };
   }
 
+  // PTY ids per tab (plain maps: not rendered). Waiters resolve once a tab's PTY has spawned.
+  const ptys = new Map<string, number>();
+  const waiters = new Map<string, { ok: (id: number) => void; fail: (e: Error) => void }[]>();
+
+  function spawned(tabId: string, ptyId: number) {
+    ptys.set(tabId, ptyId);
+    waiters.get(tabId)?.forEach((w) => w.ok(ptyId));
+    waiters.delete(tabId);
+  }
+
+  function failWaiters(tabId: string, msg: string) {
+    waiters.get(tabId)?.forEach((w) => w.fail(new Error(msg)));
+    waiters.delete(tabId);
+  }
+
+  function ptyFor(tabId: string): Promise<number> {
+    const id = ptys.get(tabId);
+    if (id !== undefined) return Promise.resolve(id);
+    return new Promise((ok, fail) => waiters.set(tabId, [...(waiters.get(tabId) ?? []), { ok, fail }]));
+  }
+
+  // Types text into the active Claude (no Enter), creating a tab first if there is none.
+  onMount(() =>
+    setClaudeSender(async (text) => {
+      const tab = ws.activeClaudeTab ?? ws.addClaudeTab('new');
+      ws.showClaude();
+      await writePty(await ptyFor(tab.id), text);
+    }),
+  );
+
   function close(id: string) {
+    ptys.delete(id);
+    failWaiters(id, 'Sessione Claude chiusa');
     delete status[id];
     ws.closeClaudeTab(id);
   }
 
   function restart(id: string) {
+    ptys.delete(id);
+    failWaiters(id, 'Sessione Claude riavviata');
     status[id] = { gen: st(id).gen + 1 };
   }
 </script>
@@ -51,8 +88,16 @@
             kind={kindOf(t)}
             {cwd}
             visible={shown}
-            onexit={() => (status[t.id] = { ...st(t.id), exited: true })}
-            onerror={(m) => (status[t.id] = { ...st(t.id), error: m })}
+            onspawn={(pid) => spawned(t.id, pid)}
+            onexit={() => {
+              ptys.delete(t.id);
+              failWaiters(t.id, 'Sessione Claude terminata');
+              status[t.id] = { ...st(t.id), exited: true };
+            }}
+            onerror={(m) => {
+              failWaiters(t.id, m);
+              status[t.id] = { ...st(t.id), error: m };
+            }}
           />
         {/key}
         {#if shown && (s.error || s.exited)}

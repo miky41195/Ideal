@@ -33,6 +33,22 @@ describe('Tabs', () => {
     expect(cb).toHaveBeenCalledTimes(1);
   });
 
+  it('doc and file tabs never share a slot', async () => {
+    const t = new Tabs();
+    t.openDoc('md:C:\\p\\a.md', 'a', '# a', 'C:\\p\\a.md');
+    await t.openFile('C:\\p\\a.md');
+    expect(t.tabs).toHaveLength(2);
+    expect(new Set(t.tabs.map((x) => x.path)).size).toBe(2);
+    const u = new Tabs();
+    await u.openFile('C:\\p\\b.md');
+    u.setContent('C:\\p\\b.md', 'edited');
+    u.openDoc('C:\\p\\b.md', 'b', '# doc');
+    const file = u.tabs.find((x) => x.kind === 'file')!;
+    expect(file.content).toBe('edited');
+    expect(file.doc).toBeUndefined();
+    expect(u.tabs.filter((x) => x.kind === 'doc')).toHaveLength(1);
+  });
+
   it('opening the same path twice yields one tab', async () => {
     const t = new Tabs();
     await t.openFile('C:\\p\\a.ts');
@@ -258,5 +274,22 @@ describe('file/diff interplay', () => {
     await t.closeTab('diff:x', confirm);
     expect(confirm).not.toHaveBeenCalled();
     expect(t.tabs).toHaveLength(0);
+  });
+
+  it('doc and transcript tabs are singleton, readonly, never dirty, not saved', async () => {
+    const t = new Tabs();
+    t.openDoc('doc:a', 'A', '# a');
+    t.openDoc('doc:a', 'A2', '# b');
+    t.openTranscript('/p', { id: 's1', title: 'Sessione' });
+    t.openTranscript('/p', { id: 's1', title: 'Sessione' });
+    expect(t.tabs).toHaveLength(2);
+    expect(t.tabs[0].doc?.markdown).toBe('# b');
+    expect(t.tabs[1].path).toBe('transcript:s1');
+    expect(t.tabs[1].transcript).toEqual({ projectPath: '/p', sessionId: 's1', title: 'Sessione' });
+    expect(hasUnsaved(t.tabs)).toBe(false);
+    t.setContent('doc:a', 'x');
+    await t.save('doc:a');
+    expect(write).not.toHaveBeenCalled();
+    expect(t.activeFileTab).toBeUndefined();
   });
 });

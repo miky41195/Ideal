@@ -1,5 +1,5 @@
 use crate::git::{
-    runner::{git, git_network},
+    runner::{git, git_exit, git_network},
     status::status_impl,
 };
 use std::time::Duration;
@@ -205,6 +205,22 @@ pub fn git_pull(path: String) -> Result<(), String> {
 pub fn git_push(path: String) -> Result<(), String> {
     push_impl(Path::new(&path))
 }
+/// `git check-ignore -q -- file`: exit 0 = ignored, 1 = not ignored.
+/// Not a repository counts as "not ignored"; any other failure is an error.
+pub fn is_ignored_impl(cwd: &Path, file: &str) -> Result<bool, String> {
+    match git_exit(cwd, &["check-ignore", "-q", "--", file])? {
+        (0, _) => Ok(true),
+        (1, _) => Ok(false),
+        (_, e) if e.contains("not a git repository") => Ok(false),
+        (c, e) => Err(if e.is_empty() { format!("git check-ignore: codice {c}") } else { e }),
+    }
+}
+
+#[tauri::command(async)]
+pub fn git_is_ignored(path: String, file: String) -> Result<bool, String> {
+    is_ignored_impl(Path::new(&path), &file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,5 +435,17 @@ mod tests {
         let t = std::time::Instant::now();
         assert!(push_impl(p).is_err());
         assert!(t.elapsed().as_secs() < 15);
+    }
+
+    #[test]
+    fn is_ignored_true_false_and_not_repo() {
+        let r = test_repo();
+        let p = r.path();
+        assert!(!is_ignored_impl(p, ".ideal/notes.md").unwrap());
+        fs::write(p.join(".gitignore"), ".ideal/\n").unwrap();
+        assert!(is_ignored_impl(p, ".ideal/notes.md").unwrap());
+        assert!(!is_ignored_impl(p, "src/a.txt").unwrap());
+        let plain = tempfile::tempdir().unwrap();
+        assert!(!is_ignored_impl(plain.path(), ".ideal/notes.md").unwrap());
     }
 }
