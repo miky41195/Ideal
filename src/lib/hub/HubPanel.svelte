@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { hub } from './hub-store.svelte';
+  import { health } from './health.svelte';
   import { relativeDate } from './dates';
   import { observationMarkdown, summaryMarkdown } from './obs-markdown';
   import { openInBrowser, type MdFile } from './hub-client';
@@ -13,8 +14,7 @@
   let open = $state({ sessions: true, mem: true, memories: true, docs: true });
   let q = $state(hub.query);
   let actionError = $state<string | null>(null);
-  let starting = $state(false);
-  let recheck: ReturnType<typeof setTimeout> | null = null;
+  const starting = $derived(health.mem === 'starting');
 
   const port = $derived(settings.value.claudeMem.port);
   const isState = (f: MdFile) => /^STATO-PROGETTO/i.test(f.name);
@@ -26,7 +26,6 @@
     window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('focus', onFocus);
-      if (recheck) clearTimeout(recheck);
     };
   });
 
@@ -61,20 +60,19 @@
   }
   async function start() {
     actionError = null;
-    starting = true;
     try {
-      await hub.startWorker();
+      await health.ensureWorker();
     } catch (e) {
       actionError = String(e);
     }
-    if (recheck) clearTimeout(recheck);
-    recheck = setTimeout(() => {
-      recheck = null;
-      starting = false;
+  }
+  // Worker came up (via any path): load the claude-mem sections.
+  $effect(() => {
+    if (health.mem === 'up' && hub.memStatus !== 'up') {
       void hub.refresh('observations');
       void hub.refresh('summaries');
-    }, 3000);
-  }
+    }
+  });
   async function browser() {
     actionError = null;
     try {

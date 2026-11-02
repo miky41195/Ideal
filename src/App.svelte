@@ -8,6 +8,7 @@
   import TopBar from './lib/layout/TopBar.svelte';
   import ActivityBar from './lib/layout/ActivityBar.svelte';
   import Sidebar from './lib/layout/Sidebar.svelte';
+  import PluginBanner from './lib/layout/PluginBanner.svelte';
   import StatusBar from './lib/layout/StatusBar.svelte';
   import BottomPanel from './lib/layout/BottomPanel.svelte';
   import Welcome from './lib/layout/Welcome.svelte';
@@ -21,6 +22,7 @@
   import { initGit, git } from './lib/git/git-store.svelte';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
   import { hub } from './lib/hub/hub-store.svelte';
+  import { health } from './lib/hub/health.svelte';
   import { onTerminalActivity, debounce } from './lib/terminal/activity';
 
   const project = new URLSearchParams(window.location.search).get('project');
@@ -73,6 +75,7 @@
     let disposed = false;
     if (project) {
       hub.projectPath = project;
+      offs.push(health.init());
       void initGit(project).then((f) => (disposed ? f() : (offGit = f)));
       void getCurrentWindow()
         .onCloseRequested(async (e) => {
@@ -100,6 +103,7 @@
 {:else if settings.ready}
   <div class="shell">
     <TopBar {name} mode={ws.mode} ontoggle={() => ws.toggleMode()} />
+    <PluginBanner />
     <div class="row">
       <ActivityBar active={ws.sidebarView} onselect={selectView} />
       {#if ws.sidebarView}<Sidebar view={ws.sidebarView} projectPath={project} />{/if}

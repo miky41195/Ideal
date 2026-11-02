@@ -16,6 +16,7 @@ vi.mock('../editor/tabs.svelte', () => ({ tabs: { openDoc: (...a: unknown[]) => 
 
 import * as c from './hub-client';
 import { HubState } from './hub-store.svelte';
+import { health } from './health.svelte';
 
 const m = vi.mocked(c);
 const md = (name: string) => ({ name, path: `/p/${name}`, updated: 1 });
@@ -79,6 +80,21 @@ describe('HubState', () => {
   describe('refreshOnActivity', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
+    it('skips claude-mem sections unless health.mem is up', async () => {
+      const h = new HubState();
+      h.projectPath = 'C:/x/Ideal';
+      health.mem = 'down';
+      h.refreshOnActivity();
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(m.sessionsList).toHaveBeenCalledTimes(1);
+      expect(m.memObservations).not.toHaveBeenCalled();
+      health.mem = 'up';
+      h.refreshOnActivity();
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(m.memObservations).toHaveBeenCalledTimes(1);
+      expect(m.memHealth).not.toHaveBeenCalled();
+      health.mem = 'unknown';
+    });
     it('debounces 2s and coalesces', async () => {
       const h = new HubState();
       h.projectPath = 'C:/x/Ideal';

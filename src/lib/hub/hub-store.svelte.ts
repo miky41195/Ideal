@@ -2,6 +2,7 @@ import { settings } from '../settings/settings.svelte';
 import { tabs } from '../editor/tabs.svelte';
 import { debounce } from '../terminal/activity';
 import * as c from './hub-client';
+import { health } from './health.svelte';
 
 export type Section = 'sessions' | 'observations' | 'summaries' | 'memories' | 'docs';
 const PAGE = 30;
@@ -25,7 +26,16 @@ export class HubState {
   query = $state('');
   searchError = $state<string | null>(null);
 
-  private activity = debounce(() => void this.refresh(), 2000);
+  private activity = debounce(() => {
+    // Single source of truth for the worker is health.mem: skip claude-mem sections unless it is up.
+    void this.refresh('sessions');
+    void this.refresh('memories');
+    void this.refresh('docs');
+    if (health.mem === 'up') {
+      void this.refresh('observations');
+      void this.refresh('summaries');
+    }
+  }, 2000);
 
   private get port(): number {
     return settings.value.claudeMem.port;
@@ -72,10 +82,13 @@ export class HubState {
     if (want('observations') || want('summaries')) {
       jobs.push(
         (async () => {
-          try {
-            this.memStatus = (await c.memHealth(this.port)) ? 'up' : 'down';
-          } catch {
-            this.memStatus = 'down';
+          if (health.mem === 'up') this.memStatus = 'up';
+          else {
+            try {
+              this.memStatus = (await c.memHealth(this.port)) ? 'up' : 'down';
+            } catch {
+              this.memStatus = 'down';
+            }
           }
           const sub: Promise<void>[] = [];
           if (want('observations'))
@@ -115,12 +128,6 @@ export class HubState {
     } catch (e) {
       this.searchError = String(e);
     }
-  }
-
-  async startWorker(): Promise<void> {
-    await c.memStartWorker();
-    await this.refresh('observations');
-    await this.refresh('summaries');
   }
 
   /** Terminal went idle: refresh once, 2 s after the last call. */
