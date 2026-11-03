@@ -28,3 +28,13 @@ export function uriToPath(uri: string): string {
   if (m) return [`${m[1].toUpperCase()}:`, ...segs.slice(2)].join(BS);
   return segs.join('/');
 }
+
+/**
+ * Rewrites every `file:///` URI string in a raw JSON-RPC message to our canonical form
+ * (`pathToUri(uriToPath(u))`). Servers echo URIs in their own spelling (rust-analyzer:
+ * `file:///c%3A/...`), and the client matches files by exact URI string.
+ */
+export function canonicalizeUris(raw: string): string {
+  if (!raw.includes('file:///')) return raw;
+  return raw.replace(/"(file:\/\/\/[^"\\]*)"/g, (_m, uri: string) => `"${pathToUri(uriToPath(uri))}"`);
+}

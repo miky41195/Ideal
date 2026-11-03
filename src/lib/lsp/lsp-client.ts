@@ -1,5 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import type { Transport } from '@codemirror/lsp-client';
+import { canonicalizeUris } from './uri';
 
 export interface LspStarted {
   serverId: number;
@@ -30,7 +31,8 @@ export function createTransport(
   onExit: (code: number | null, error?: LspStartError) => void,
 ): Transport {
   const handlers = new Set<(m: string) => void>();
-  source.onmessage = (raw: string) => {
+  source.onmessage = (incoming: string) => {
+    const raw = canonicalizeUris(incoming);
     if (raw.includes(EXIT_METHOD)) {
       try {
         const msg = JSON.parse(raw) as { method?: string; params?: { code?: number | null; error?: LspStartError } };
