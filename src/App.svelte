@@ -27,6 +27,7 @@
   import { fsWatch } from './lib/fs-client';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
+  import { createBackupScheduler, backupWrite, backupClear, backupClearAll, backupList, restoreBackups } from './lib/editor/hot-exit';
   import { hub } from './lib/hub/hub-store.svelte';
   import { health } from './lib/hub/health.svelte';
   import { onTerminalActivity, debounce } from './lib/terminal/activity';
@@ -143,6 +144,18 @@
     let disposed = false;
     if (project) {
       hub.projectPath = project;
+      const scheduler = createBackupScheduler(
+        (path, content, eol) => backupWrite(project, path, content, eol),
+        (path) => backupClear(project, path),
+      );
+      tabs.setBackupSink(scheduler);
+      offs.push(() => tabs.setBackupSink(null));
+      void backupList(project)
+        .then((list) => restoreBackups(tabs, list, (p) => void backupClear(project, p).catch(() => {})))
+        .then((count) => {
+          if (count > 0) showToast(`Ripristinate ${count} modifiche non salvate`);
+        })
+        .catch((e) => console.warn('hot exit restore failed', e));
       offs.push(health.init());
       void getCurrentWebviewWindow()
         .listen<{ paths: string[] }>('fs://changed', (e) => void tabs.onDiskChanged(e.payload.paths))
@@ -153,11 +166,19 @@
       void getCurrentWindow()
         .onCloseRequested(async (e) => {
           if (!hasUnsaved(tabs.tabs)) return;
+          // Hot exit: persist unsaved buffers and close without asking; ask only if that fails.
+          try {
+            await scheduler.flush();
+            return;
+          } catch (err) {
+            console.warn('hot exit flush failed', err);
+          }
           const ok = await ask('Ci sono modifiche non salvate. Chiudere senza salvare?', {
             title: 'Ideal',
             kind: 'warning',
           });
           if (!ok) e.preventDefault();
+          else void backupClearAll(project).catch(() => {});
         })
         .then((f) => (offClose = f));
     }

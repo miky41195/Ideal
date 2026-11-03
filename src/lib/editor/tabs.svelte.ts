@@ -1,6 +1,7 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
 import { decideDiskChange } from './disk-policy';
 import { showToast } from '../ui/toast.svelte';
+import type { BackupSink } from './hot-exit';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -71,8 +72,27 @@ export class Tabs {
   selectionHint = '';
   private lastFilePath: string | null = null;
   private diskJobs = new Map<string, { pending: boolean; done: Promise<void> }>();
+  private backup: BackupSink | null = null;
   private savedListeners = new Set<() => void>();
   private retargetListeners = new Set<(from: string, to: string) => void>();
+
+  /** Hot-exit hook: told when a file buffer becomes dirty, clean again, or is thrown away. */
+  setBackupSink(sink: BackupSink | null): void {
+    this.backup = sink;
+  }
+
+  private noteBackup(t: EditorTab): void {
+    if (!this.backup || !isFileTab(t) || t.readonly) return;
+    if (dirty(t)) this.backup.changed(t.path, t.content, t.eol);
+    else this.backup.saved(t.path);
+  }
+
+  /** Opens a tab restored from a hot-exit backup: `content` (backup) is dirty against `savedContent` (current disk text). */
+  openRestored(path: string, content: string, savedContent: string, eol: Eol, deleted: boolean): void {
+    if (this.tabs.some((t) => t.path === path && isFileTab(t))) return;
+    this.tabs.push({ kind: 'file', path, name: nameOf(path), content, savedContent, eol, readonly: false, orphaned: deleted || undefined });
+    if (this.activePath === null) this.activePath = path;
+  }
 
   /** Notified after a file was saved successfully (e.g. to refresh git status). */
   onSaved(fn: () => void): () => void {
@@ -146,6 +166,7 @@ export class Tabs {
     t.diskConflict = undefined;
     t.orphaned = false;
     t.reloadToken = (t.reloadToken ?? 0) + 1;
+    this.noteBackup(t);
   }
 
   /** Files changed on disk (absolute paths): re-read the open ones and apply the external-change policy. */
@@ -344,7 +365,10 @@ export class Tabs {
 
   setContent(path: string, content: string): void {
     const t = this.tabs.find((x) => x.path === path);
-    if (t && !t.readonly) t.content = content;
+    if (t && !t.readonly) {
+      t.content = content;
+      this.noteBackup(t);
+    }
   }
 
   async closeTab(path: string, confirmDirty: (name: string) => Promise<boolean>): Promise<void> {
@@ -354,8 +378,10 @@ export class Tabs {
     if (dirty(tab) && !(await confirmDirty(tab.name))) return;
     const j = this.tabs.findIndex((t) => t.path === path);
     if (j < 0) return;
+    const wasDirty = dirty(tab);
     this.tabs.splice(j, 1);
     delete this.errors[path];
+    if (wasDirty && isFileTab(tab)) this.backup?.discarded(path);
     if (this.activePath === path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
   }
 
@@ -368,6 +394,7 @@ export class Tabs {
       t.savedContent = snapshot;
       t.orphaned = false;
       delete this.errors[path];
+      this.noteBackup(t); // clean now (or edited again while saving)
       this.savedListeners.forEach((f) => f());
     } catch (e) {
       this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;

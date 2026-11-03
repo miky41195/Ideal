@@ -1,3 +1,4 @@
+mod backups;
 mod claude;
 mod claude_mem;
 mod fs_cmds;
@@ -52,6 +53,10 @@ pub fn run() {
             git::history::git_heatmap,
             git::history::git_day_commits,
             git::watch::git_watch,
+            backups::backup_write,
+            backups::backup_clear,
+            backups::backup_list,
+            backups::backup_clear_all,
             settings::get_settings,
             settings::settings_path,
             settings::get_recent,
