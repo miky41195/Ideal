@@ -1,5 +1,6 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
 import { decideDiskChange } from './disk-policy';
+import { showToast } from '../ui/toast.svelte';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -179,25 +180,45 @@ export class Tabs {
     return job.done;
   }
 
-  private async checkDisk(path: string): Promise<void> {
-    let disk: string | null = null;
-    let eol: Eol | undefined;
+  /** Delay before re-checking a path that looked missing (atomic rewrites leave it briefly absent). */
+  recheckDelayMs = 300;
+
+  private async readDisk(path: string): Promise<{ text: string; eol: Eol } | { readonly: string } | 'missing' | 'error'> {
     try {
       const f = await readTextFile(path);
-      disk = f.content;
-      eol = f.eol;
-    } catch {
-      disk = null;
+      if (f.readonly) return { readonly: f.reason ?? 'non modificabile' };
+      return { text: f.content, eol: f.eol };
+    } catch (e) {
+      return /os error (2|3)\b/.test(String(e)) ? 'missing' : 'error';
+    }
+  }
+
+  private async checkDisk(path: string): Promise<void> {
+    let r = await this.readDisk(path);
+    if (r === 'missing') {
+      await new Promise((res) => setTimeout(res, this.recheckDelayMs));
+      r = await this.readDisk(path);
     }
     const cur = this.tabs.find((x) => x.path === path && isFileTab(x));
-    if (!cur) return;
+    if (!cur || r === 'error') return; // unreadable right now (sharing violation...): keep the tab as is
+    if (typeof r === 'object' && 'readonly' in r) {
+      // Binary / too large / not UTF-8 now: its "content" is not the file text, never load it.
+      const reason = r.readonly;
+      if (dirty(cur)) showToast('File su disco non più leggibile come testo');
+      else {
+        cur.readonly = true;
+        cur.reason = reason;
+      }
+      return;
+    }
+    const disk = r === 'missing' ? null : (r as { text: string }).text;
     switch (decideDiskChange(cur, disk)) {
       case 'ignore':
         if (disk !== null && disk !== cur.savedContent) cur.savedContent = disk; // dirty buffer already equals disk
         cur.diskConflict = undefined;
         break;
       case 'reload':
-        if (eol) cur.eol = eol;
+        cur.eol = (r as { eol: Eol }).eol;
         this.applyReload(cur, disk!);
         break;
       case 'conflict':
