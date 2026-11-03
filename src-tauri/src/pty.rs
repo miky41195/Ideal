@@ -78,7 +78,7 @@ pub fn launch_for(kind: &PtyKind) -> Result<Launch, String> {
     }
 }
 
-fn wrap_script(exe: PathBuf, args: Vec<String>) -> Launch {
+pub(crate) fn wrap_script(exe: PathBuf, args: Vec<String>) -> Launch {
     let is_script = exe
         .extension()
         .and_then(|e| e.to_str())
@@ -95,12 +95,12 @@ fn wrap_script(exe: PathBuf, args: Vec<String>) -> Launch {
 
 /// Windows Job Object with KILL_ON_JOB_CLOSE: terminating or closing it kills
 /// the whole process tree, including grandchildren, even if the app crashes.
-struct Job(windows_sys::Win32::Foundation::HANDLE);
+pub(crate) struct Job(windows_sys::Win32::Foundation::HANDLE);
 unsafe impl Send for Job {}
 unsafe impl Sync for Job {}
 
 impl Job {
-    fn new(process: Option<std::os::windows::io::RawHandle>) -> Option<Job> {
+    pub(crate) fn new(process: Option<std::os::windows::io::RawHandle>) -> Option<Job> {
         use windows_sys::Win32::System::JobObjects::*;
         let process = process?;
         unsafe {
@@ -123,7 +123,7 @@ impl Job {
             Some(Job(h))
         }
     }
-    fn terminate(&self) {
+    pub(crate) fn terminate(&self) {
         unsafe {
             windows_sys::Win32::System::JobObjects::TerminateJobObject(self.0, 1);
         }
