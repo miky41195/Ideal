@@ -1,6 +1,5 @@
 use grep_matcher::Matcher;
 use grep_regex::RegexMatcherBuilder;
-use grep_searcher::{sinks::Lossy, BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -125,11 +124,6 @@ pub fn project_search_impl(
         .word(opts.whole_word)
         .build(&pattern)
         .map_err(|e| format!("Regex non valida: {e}"))?;
-    let mut searcher = SearcherBuilder::new()
-        .binary_detection(BinaryDetection::quit(0))
-        .line_number(true)
-        .build();
-
     'walk: for e in walker(root).flatten() {
         if current.load(Ordering::Relaxed) != generation {
             res.superseded = true;
@@ -143,42 +137,38 @@ pub fn project_search_impl(
             continue;
         }
         let Some(path) = rel(rootp, e.path()) else { continue };
-        let mut stop = false;
-        let _ = searcher.search_path(
-            &matcher,
-            e.path(),
-            Lossy(|lnum, line| {
-                let text_full = line.trim_end_matches(['\n', '\r']);
-                let mut spans = Vec::new();
-                let _ = matcher.find_iter(text_full.as_bytes(), |m| {
-                    spans.push((m.start(), m.end()));
-                    true
-                });
-                for (s, en) in spans {
-                    if res.matches.len() >= cap {
-                        res.truncated = true;
-                        stop = true;
-                        return Ok(false);
-                    }
-                    if en <= s {
-                        continue; // zero-length match
-                    }
-                    let Some((text, col, len)) = window_text(text_full, s, en) else {
-                        continue;
-                    };
-                    res.matches.push(Match {
-                        path: path.clone(),
-                        line: lnum as u32,
-                        col,
-                        len,
-                        text,
-                    });
+        let Ok(bytes) = std::fs::read(e.path()) else { continue };
+        if bytes.contains(&0) {
+            continue; // binary
+        }
+        // Own line splitting: handles LF and CRLF, `text` never carries a CR.
+        for (i, raw) in bytes.split(|&b| b == b'\n').enumerate() {
+            let raw = raw.strip_suffix(b"\r").unwrap_or(raw);
+            let text_full = String::from_utf8_lossy(raw);
+            let mut spans = Vec::new();
+            let _ = matcher.find_iter(text_full.as_bytes(), |m| {
+                spans.push((m.start(), m.end()));
+                true
+            });
+            for (s, en) in spans {
+                if res.matches.len() >= cap {
+                    res.truncated = true;
+                    break 'walk;
                 }
-                Ok(true)
-            }),
-        );
-        if stop {
-            break 'walk;
+                if en <= s {
+                    continue; // zero-length match
+                }
+                let Some((text, col, len)) = window_text(&text_full, s, en) else {
+                    continue;
+                };
+                res.matches.push(Match {
+                    path: path.clone(),
+                    line: i as u32 + 1,
+                    col,
+                    len,
+                    text,
+                });
+            }
         }
     }
     if current.load(Ordering::Relaxed) != generation {
@@ -370,8 +360,7 @@ mod tests {
     fn text_is_windowed_around_late_match() {
         let d = fixture();
         let g = AtomicU64::new(1);
-        let line = format!("{}needle{}
-", "x".repeat(1000), "y".repeat(4000));
+        let line = format!("{}needle{}\n", "x".repeat(1000), "y".repeat(4000));
         fs::write(d.path().join("min.js"), line).unwrap();
         let r = project_search_impl(&root(&d), "needle", &opts(), 100, 1, &g).unwrap();
         let m = r.matches.iter().find(|m| m.path == "min.js").unwrap();
@@ -405,12 +394,15 @@ mod tests {
     fn crlf_dollar_matches() {
         let d = fixture();
         let g = AtomicU64::new(1);
-        fs::write(d.path().join("c.txt"), "let a = 1;
-b
-").unwrap();
+        fs::write(d.path().join("c.txt"), "let a = 1;\r\nb\r\n").unwrap();
         let o = SearchOpts { regex: true, case_sensitive: false, whole_word: false };
         let r = project_search_impl(&root(&d), ";$", &o, 100, 1, &g).unwrap();
-        assert!(r.matches.iter().any(|m| m.path == "c.txt" && m.line == 1));
+        let m = r.matches.iter().find(|m| m.path == "c.txt").expect("crlf match");
+        assert_eq!((m.line, m.col, m.len), (1, 9, 1));
+        assert!(!m.text.contains('\r'));
+        fs::write(d.path().join("l.txt"), "let a = 1;\nb\n").unwrap();
+        let r = project_search_impl(&root(&d), ";$", &o, 100, 1, &g).unwrap();
+        assert!(r.matches.iter().any(|m| m.path == "l.txt" && m.line == 1));
     }
 
     #[test]
