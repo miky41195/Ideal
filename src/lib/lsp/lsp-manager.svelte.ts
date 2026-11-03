@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { showToast } from '../ui/toast.svelte';
 import { languageIdFor, serverKeyFor } from './lang';
 import { pathToUri } from './uri';
+import { pullDiagnostics } from './pull-diagnostics';
 import { startServer, stopServer, type LspStartError } from './lsp-client';
 
 export const IDLE_MS = 300_000;
@@ -32,7 +33,7 @@ const defaultDeps: LspDeps = {
     new LSPClient({
       rootUri,
       sanitizeHTML: (h) => DOMPurify.sanitize(h),
-      extensions: languageServerExtensions(),
+      extensions: [...languageServerExtensions(), pullDiagnostics()],
     }),
   notify: (m) => showToast(m),
 };
