@@ -4,14 +4,14 @@ use grep_searcher::{sinks::Lossy, BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 const MAX_FILES: usize = 50_000;
 const MAX_RESULTS: usize = 2_000;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TEXT_CHARS: usize = 300;
-
-static SEARCH_GEN: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Serialize, Debug)]
 pub struct FileList {
@@ -83,6 +83,26 @@ fn utf16_len(s: &str) -> u32 {
     s.encode_utf16().count() as u32
 }
 
+/// Window of at most MAX_TEXT_CHARS chars containing the match start.
+/// Returns (text, col, len) with col/len in UTF-16 units relative to text.
+fn window_text(line: &str, s: usize, en: usize) -> Option<(String, u32, u32)> {
+    let pre = line.get(..s)?;
+    let mt = line.get(s..en)?;
+    let start_char = pre.chars().count();
+    let first = if start_char < MAX_TEXT_CHARS / 2 { 0 } else { start_char - MAX_TEXT_CHARS / 4 };
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    let w_start = chars.get(first).map_or(line.len(), |c| c.0);
+    let w_end = chars.get(first + MAX_TEXT_CHARS).map_or(line.len(), |c| c.0);
+    let m_end = en.min(w_end);
+    let text = &line[w_start..w_end];
+    let _ = mt;
+    Some((
+        text.to_string(),
+        utf16_len(&line[w_start..s]),
+        utf16_len(&line[s..m_end]),
+    ))
+}
+
 pub fn project_search_impl(
     root: &str,
     query: &str,
@@ -140,24 +160,18 @@ pub fn project_search_impl(
                         stop = true;
                         return Ok(false);
                     }
-                    // keep the match inside the truncated text
-                    let mut end_byte = text_full
-                        .char_indices()
-                        .nth(MAX_TEXT_CHARS)
-                        .map_or(text_full.len(), |(i, _)| i);
-                    if en > end_byte {
-                        end_byte = en;
+                    if en <= s {
+                        continue; // zero-length match
                     }
-                    let text = &text_full[..end_byte];
-                    let (Some(pre), Some(mt)) = (text_full.get(..s), text_full.get(s..en)) else {
+                    let Some((text, col, len)) = window_text(text_full, s, en) else {
                         continue;
                     };
                     res.matches.push(Match {
                         path: path.clone(),
                         line: lnum as u32,
-                        col: utf16_len(pre),
-                        len: utf16_len(mt),
-                        text: text.to_string(),
+                        col,
+                        len,
+                        text,
                     });
                 }
                 Ok(true)
@@ -181,15 +195,34 @@ pub async fn project_files(root: String) -> Result<FileList, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Supersede counters, one per window label.
+#[derive(Default)]
+pub struct SearchGens(Mutex<HashMap<String, Arc<AtomicU64>>>);
+
+impl SearchGens {
+    /// Start a new search for `label`: returns its counter and generation.
+    pub fn begin(&self, label: &str) -> (Arc<AtomicU64>, u64) {
+        let mut m = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let c = m.entry(label.to_string()).or_default().clone();
+        let g = c.fetch_add(1, Ordering::SeqCst) + 1;
+        (c, g)
+    }
+    pub fn remove(&self, label: &str) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).remove(label);
+    }
+}
+
 #[tauri::command(async)]
 pub async fn project_search(
+    window: tauri::WebviewWindow,
+    gens: tauri::State<'_, SearchGens>,
     root: String,
     query: String,
     opts: SearchOpts,
 ) -> Result<SearchResult, String> {
-    let generation = SEARCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let (counter, generation) = gens.begin(window.label());
     tauri::async_runtime::spawn_blocking(move || {
-        project_search_impl(&root, &query, &opts, MAX_RESULTS, generation, &SEARCH_GEN)
+        project_search_impl(&root, &query, &opts, MAX_RESULTS, generation, &counter)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -331,5 +364,69 @@ mod tests {
         let u: Vec<_> = r.matches.iter().filter(|m| m.path == "u.txt").collect();
         assert_eq!(u[0].col, 3);
         assert_eq!(u[1].col, 3); // emoji = 2 UTF-16 units + space
+    }
+
+    #[test]
+    fn text_is_windowed_around_late_match() {
+        let d = fixture();
+        let g = AtomicU64::new(1);
+        let line = format!("{}needle{}
+", "x".repeat(1000), "y".repeat(4000));
+        fs::write(d.path().join("min.js"), line).unwrap();
+        let r = project_search_impl(&root(&d), "needle", &opts(), 100, 1, &g).unwrap();
+        let m = r.matches.iter().find(|m| m.path == "min.js").unwrap();
+        let u: Vec<u16> = m.text.encode_utf16().collect();
+        assert!(m.text.chars().count() <= 300);
+        let got = String::from_utf16(&u[m.col as usize..(m.col + m.len) as usize]).unwrap();
+        assert_eq!(got, "needle");
+    }
+
+    #[test]
+    fn long_match_is_clipped_to_window() {
+        let (t, col, len) = window_text(&"a".repeat(1000), 0, 1000).unwrap();
+        assert_eq!(t.len(), 300);
+        assert_eq!((col, len), (0, 300));
+    }
+
+    #[test]
+    fn gens_are_per_window() {
+        let g = SearchGens::default();
+        let (ca, ga) = g.begin("a");
+        let (cb, gb) = g.begin("b");
+        assert_eq!(ca.load(Ordering::SeqCst), ga);
+        assert_eq!(cb.load(Ordering::SeqCst), gb);
+        let (_, ga2) = g.begin("a");
+        assert_ne!(ca.load(Ordering::SeqCst), ga); // a superseded
+        assert_eq!(cb.load(Ordering::SeqCst), gb); // b untouched
+        assert_eq!(ga2, 2);
+    }
+
+    #[test]
+    fn crlf_dollar_matches() {
+        let d = fixture();
+        let g = AtomicU64::new(1);
+        fs::write(d.path().join("c.txt"), "let a = 1;
+b
+").unwrap();
+        let o = SearchOpts { regex: true, case_sensitive: false, whole_word: false };
+        let r = project_search_impl(&root(&d), ";$", &o, 100, 1, &g).unwrap();
+        assert!(r.matches.iter().any(|m| m.path == "c.txt" && m.line == 1));
+    }
+
+    #[test]
+    fn zero_length_matches_skipped() {
+        let d = fixture();
+        let g = AtomicU64::new(1);
+        let o = SearchOpts { regex: true, case_sensitive: false, whole_word: false };
+        let r = project_search_impl(&root(&d), "z*", &o, 2, 1, &g).unwrap();
+        assert!(r.matches.is_empty() && !r.truncated);
+    }
+
+    #[test]
+    fn missing_root_errors() {
+        let g = AtomicU64::new(1);
+        let e = project_search_impl("C:/no/such/dir", "x", &opts(), 10, 1, &g).unwrap_err();
+        assert_eq!(e, "Cartella non trovata");
+        assert_eq!(project_files_impl("C:/no/such/dir", 10).unwrap_err(), "Cartella non trovata");
     }
 }

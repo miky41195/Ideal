@@ -18,6 +18,7 @@ pub fn run() {
         .manage(git::history::HeatmapCache::default())
         .manage(git::watch::GitWatchers::default())
         .manage(hub::SessionCache::default())
+        .manage(search::SearchGens::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -77,6 +78,7 @@ pub fn run() {
             if let WindowEvent::Destroyed = event {
                 window.app_handle().state::<pty::PtyManager>().kill_owned_by(window.label());
                 window.app_handle().state::<git::watch::GitWatchers>().remove(window.label());
+                window.app_handle().state::<search::SearchGens>().remove(window.label());
             }
         })
         .build(tauri::generate_context!())
