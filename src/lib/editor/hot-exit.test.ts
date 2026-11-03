@@ -121,4 +121,54 @@ describe('Tabs backup sink', () => {
     await t.closeTab('/p/a.ts', async () => true);
     expect(sink.discarded).toHaveBeenCalledWith('/p/a.ts');
   });
+  const mkSink = () => ({ changed: vi.fn(), saved: vi.fn(), discarded: vi.fn() });
+  const disk = (content: string) => read.mockResolvedValue({ content, eol: 'lf', readonly: false, reason: null });
+
+  it('"Ricarica" (reloadFromDisk) on a dirty tab clears its backup', async () => {
+    const t = new Tabs();
+    await t.openFile('/p/a.ts');
+    t.setContent('/p/a.ts', 'mine');
+    const sink = mkSink();
+    t.setBackupSink(sink);
+    disk('theirs');
+    await t.onDiskChanged(['/p/a.ts']);
+    expect(t.tabs[0].diskConflict).toBe('theirs');
+    t.reloadFromDisk('/p/a.ts');
+    expect(sink.saved).toHaveBeenCalledWith('/p/a.ts');
+    expect(sink.changed).not.toHaveBeenCalled();
+  });
+
+  it('silent reload of a clean tab leaves no stale backup', async () => {
+    const t = new Tabs();
+    await t.openFile('/p/a.ts');
+    const sink = mkSink();
+    t.setBackupSink(sink);
+    disk('newer');
+    await t.onDiskChanged(['/p/a.ts']);
+    expect(t.tabs[0].content).toBe('newer');
+    expect(sink.saved).toHaveBeenCalledWith('/p/a.ts');
+  });
+
+  it('keepMine keeps the backup alive (still dirty)', async () => {
+    const t = new Tabs();
+    await t.openFile('/p/a.ts');
+    t.setContent('/p/a.ts', 'mine');
+    const sink = mkSink();
+    t.setBackupSink(sink);
+    disk('theirs');
+    await t.onDiskChanged(['/p/a.ts']);
+    t.keepMine('/p/a.ts');
+    expect(sink.changed).toHaveBeenCalledWith('/p/a.ts', 'mine', 'lf');
+  });
+
+  it('rename moves the backup: old path cleared, dirty buffer backed up at the new path', async () => {
+    const t = new Tabs();
+    await t.openFile('/p/a.ts');
+    t.setContent('/p/a.ts', 'mine');
+    const sink = mkSink();
+    t.setBackupSink(sink);
+    t.retarget('/p/a.ts', '/p/b.ts');
+    expect(sink.discarded).toHaveBeenCalledWith('/p/a.ts');
+    expect(sink.changed).toHaveBeenCalledWith('/p/b.ts', 'mine', 'lf');
+  });
 });

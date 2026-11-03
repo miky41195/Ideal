@@ -115,6 +115,10 @@ export class Tabs {
       const old = t.path;
       t.path = np;
       t.name = nameOf(np);
+      if (this.backup) {
+        this.backup.discarded(old); // old-path backup must not be restored
+        this.noteBackup(t);
+      }
       if (old in this.errors) {
         this.errors[np] = this.errors[old];
         delete this.errors[old];
@@ -136,6 +140,7 @@ export class Tabs {
       const j = this.tabs.findIndex((x) => x.path === t.path);
       this.tabs.splice(j, 1);
       delete this.errors[t.path];
+      this.backup?.saved(t.path); // clean tab gone: no backup should linger
       if (this.activePath === t.path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
     }
   }
@@ -158,6 +163,7 @@ export class Tabs {
     if (!t || t.diskConflict === undefined) return;
     t.savedContent = t.diskConflict;
     t.diskConflict = undefined;
+    this.noteBackup(t);
   }
 
   private applyReload(t: EditorTab, disk: string): void {
@@ -236,6 +242,7 @@ export class Tabs {
     switch (decideDiskChange(cur, disk)) {
       case 'ignore':
         if (disk !== null && disk !== cur.savedContent) cur.savedContent = disk; // dirty buffer already equals disk
+        this.noteBackup(cur);
         cur.diskConflict = undefined;
         break;
       case 'reload':
