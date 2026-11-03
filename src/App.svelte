@@ -17,7 +17,10 @@
   import Palette from './lib/palette/Palette.svelte';
   import QuickOpen from './lib/search/QuickOpen.svelte';
   import Toasts from './lib/ui/Toasts.svelte';
-  import { settings } from './lib/settings/settings.svelte';
+  import { settings, settingsPath } from './lib/settings/settings.svelte';
+  import { registerCommands, formatBinding, type PaletteCommand } from './lib/palette/registry';
+  import type { Command } from './lib/keys/router';
+  import { showToast } from './lib/ui/toast.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { initGit, git } from './lib/git/git-store.svelte';
@@ -28,6 +31,64 @@
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
+
+  const isFileActive = () => ws.mode === 'editor' && !!tabs.active && (tabs.active.kind ?? 'file') === 'file';
+  const bus = (id: string, label: string, cmd: Command, when?: () => boolean): PaletteCommand => ({
+    id,
+    label,
+    run: () => dispatch(cmd),
+    when,
+    keys: formatBinding(cmd),
+  });
+  const showView = (id: string, label: string, v: NonNullable<typeof ws.sidebarView>): PaletteCommand => ({
+    id,
+    label,
+    run: () => {
+      ws.sidebarView = v;
+    },
+  });
+  const builtins: PaletteCommand[] = [
+    bus('toggleMode', 'Passa a Claude / Editor', 'toggleMode'),
+    bus('togglePanel', 'Mostra/nascondi terminale', 'togglePanel'),
+    bus('newClaudeTab', 'Nuova tab Claude', 'newClaudeTab'),
+    {
+      id: 'resumeLast',
+      label: 'Riprendi ultima sessione Claude',
+      run: () => {
+        ws.addClaudeTab('continue');
+        ws.showClaude();
+      },
+    },
+    bus('quickOpen', 'Apri file…', 'quickOpenAny'),
+    bus('searchProject', 'Cerca nel progetto', 'searchProject'),
+    bus('save', 'Salva', 'save', isFileActive),
+    bus('saveAll', 'Salva tutto', 'saveAll', () => ws.mode === 'editor'),
+    bus('closeTab', 'Chiudi tab', 'closeTab', () => ws.mode === 'editor' && !!tabs.active),
+    {
+      id: 'openSettings',
+      label: 'Apri settings.json',
+      run: async () => {
+        try {
+          await tabs.openFile(await settingsPath());
+          ws.showEditor();
+        } catch (e) {
+          showToast(`Impossibile aprire settings.json: ${e}`);
+        }
+      },
+    },
+    showView('viewExplorer', 'Mostra Esplora file', 'explorer'),
+    showView('viewGit', 'Mostra Git', 'git'),
+    {
+      id: 'viewHeatmap',
+      label: 'Mostra Heatmap',
+      run: () => {
+        tabs.openHeatmap();
+        ws.showEditor();
+      },
+    },
+    showView('viewHub', 'Mostra Claude Hub', 'hub'),
+    showView('viewNotes', 'Mostra Note', 'notes'),
+  ];
 
   function selectView(v: NonNullable<typeof ws.sidebarView>) {
     ws.sidebarView = ws.sidebarView === v ? null : v;
@@ -44,6 +105,7 @@
     // Claude/shell edits files without going through the editor: refresh once output goes idle.
     const idleRefresh = debounce(() => void git.refresh(), 1500);
     const offs = [
+      registerCommands(builtins),
       tabs.onSaved(() => void git.refresh()),
       onTerminalActivity(idleRefresh),
       idleRefresh.cancel,

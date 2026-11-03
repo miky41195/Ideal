@@ -1,38 +1,46 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { onCommand } from '../commands';
-  import { settingsPath } from '../settings/settings.svelte';
-  import { openFile } from '../editor/tabs.svelte';
-  import { workspace as ws } from '../state/workspace.svelte';
+  import { listCommands, filterCommands, type PaletteCommand } from './registry';
   import { showToast } from '../ui/toast.svelte';
 
   let open = $state(false);
+  let query = $state('');
+  let items = $state<PaletteCommand[]>([]);
+  let sel = $state(0);
   let prevFocus: HTMLElement | null = null;
-  let box: HTMLDivElement | undefined = $state();
+  let input: HTMLInputElement | undefined = $state();
+
+  const shown = $derived(filterCommands(query, items));
+  $effect(() => {
+    void shown;
+    sel = 0;
+  });
 
   onMount(() =>
     onCommand('palette', async () => {
       prevFocus = document.activeElement as HTMLElement | null;
+      query = '';
+      items = listCommands();
       open = true;
       await tick();
-      box?.focus();
+      input?.focus();
     }),
   );
 
-  function close() {
+  function close(restore = true) {
     open = false;
-    prevFocus?.focus?.();
+    if (restore) prevFocus?.focus?.();
     prevFocus = null;
   }
 
-  async function openSettings() {
-    open = false;
-    prevFocus = null; // the editor takes focus after opening
+  async function run(c: PaletteCommand | undefined) {
+    if (!c) return;
+    close(false); // the command decides where focus goes
     try {
-      await openFile(await settingsPath());
-      ws.showEditor();
+      await c.run();
     } catch (e) {
-      showToast(`Impossibile aprire settings.json: ${e}`);
+      showToast(`${c.label}: ${e}`);
     }
   }
 
@@ -40,19 +48,39 @@
     if (ev.key === 'Escape') {
       ev.preventDefault();
       close();
+    } else if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      sel = Math.min(sel + 1, shown.length - 1);
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      sel = Math.max(sel - 1, 0);
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
-      void openSettings();
+      void run(shown[sel]);
     }
   }
+
+  $effect(() => {
+    void sel;
+    if (open) document.querySelector('.pal-item.active')?.scrollIntoView({ block: 'nearest' });
+  });
 </script>
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="backdrop" onclick={close}>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-    <div class="box" tabindex="0" bind:this={box} onkeydown={onkey} onclick={(e) => e.stopPropagation()}>
-      <button class="item active" onclick={openSettings}>Apri settings.json</button>
+  <div class="backdrop" onclick={() => close()}>
+    <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+    <div class="box" onclick={(e) => e.stopPropagation()}>
+      <input bind:this={input} bind:value={query} onkeydown={onkey} placeholder="Digita un comando…" spellcheck="false" />
+      <div class="list">
+        {#each shown as c, i (c.id)}
+          <button class="pal-item item" class:active={i === sel} onclick={() => run(c)} onmousemove={() => (sel = i)}>
+            <span>{c.label}</span>{#if c.keys}<span class="keys">{c.keys}</span>{/if}
+          </button>
+        {:else}
+          <div class="empty">Nessun comando</div>
+        {/each}
+      </div>
     </div>
   </div>
 {/if}
@@ -75,6 +103,32 @@
     padding: 6px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     outline: none;
+  }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+  }
+  .list {
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .keys {
+    float: right;
+    color: var(--text-dim);
+    font-size: 11.5px;
+  }
+  .empty {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-dim);
   }
   .item {
     display: block;
