@@ -10,7 +10,7 @@
   import CodeEditor from './CodeEditor.svelte';
   import DiskBanner from './DiskBanner.svelte';
 
-  let { visible = true }: { visible?: boolean } = $props();
+  let { visible = true, projectRoot = '' }: { visible?: boolean; projectRoot?: string } = $props();
 
   const hasHeatmap = $derived(tabs.tabs.some((t) => t.kind === 'heatmap'));
 
@@ -58,7 +58,7 @@
     <div class="main">
       {#if tabs.activeFileTab}
         <div class="body" class:hidden={!onFile}>
-          <CodeEditor tab={tabs.activeFileTab} visible={visible && onFile} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} />
+          <CodeEditor tab={tabs.activeFileTab} {projectRoot} visible={visible && onFile} isOpen={(p) => tabs.tabs.some((t) => t.path === p && isFileTab(t))} onchange={(p, c) => tabs.setContent(p, c)} />
         </div>
       {/if}
       {#if hasHeatmap}

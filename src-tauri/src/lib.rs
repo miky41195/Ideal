@@ -5,6 +5,7 @@ mod fs_cmds;
 mod fs_watch;
 mod git;
 mod hub;
+mod lsp;
 mod plugins;
 mod pty;
 mod search;
@@ -22,6 +23,7 @@ pub fn run() {
         .manage(hub::SessionCache::default())
         .manage(search::SearchGens::default())
         .manage(fs_watch::FsWatchers::default())
+        .manage(lsp::process::LspServers::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -76,7 +78,10 @@ pub fn run() {
             hub::docs_list,
             fs_watch::fs_watch,
             search::project_files,
-            search::project_search
+            search::project_search,
+            lsp::process::lsp_start,
+            lsp::process::lsp_send,
+            lsp::process::lsp_stop
         ])
         .setup(|app| {
             settings::start_watcher(app.handle().clone());
@@ -88,6 +93,7 @@ pub fn run() {
                 window.app_handle().state::<git::watch::GitWatchers>().remove(window.label());
                 window.app_handle().state::<search::SearchGens>().remove(window.label());
                 window.app_handle().state::<fs_watch::FsWatchers>().remove(window.label());
+                window.app_handle().state::<lsp::process::LspServers>().stop_owned_by(window.label());
             }
         })
         .build(tauri::generate_context!())

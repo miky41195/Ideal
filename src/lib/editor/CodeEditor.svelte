@@ -25,7 +25,15 @@
   import { baseTheme, highlightingExt } from './theme';
   import { languageFor } from './languages';
   import { settings } from '../settings/settings.svelte';
-  import { tabs, remapPath, type EditorTab } from './tabs.svelte';
+  import { tabs, remapPath, isFileTab, type EditorTab } from './tabs.svelte';
+  import { lsp } from '../lsp/lsp-manager.svelte';
+  import {
+    jumpToDefinitionKeymap,
+    findReferencesKeymap,
+    renameKeymap,
+    signatureKeymap,
+    formatKeymap,
+  } from '@codemirror/lsp-client';
   import { clampSelection } from './disk-policy';
 
   let {
@@ -33,11 +41,13 @@
     onchange,
     isOpen,
     visible = true,
+    projectRoot = '',
   }: {
     tab: EditorTab;
     onchange: (path: string, content: string) => void;
     isOpen: (path: string) => boolean;
     visible?: boolean;
+    projectRoot?: string;
   } = $props();
 
   let host: HTMLDivElement;
@@ -47,6 +57,9 @@
   const lang = new Compartment();
   const look = new Compartment();
   const indent = new Compartment();
+  const lspComp = new Compartment();
+  /** Paths whose cached EditorState already carries its LSP plugin (no reconnect on tab switch). */
+  const lspAttached = new Set<string>();
   let currentPath: string | null = null;
   // Last reloadToken applied per path; a mismatch means the doc must be replaced from tab.content.
   const tokens = new Map<string, number>();
@@ -108,6 +121,7 @@
       ...highlightingExt,
       look.of(lookExt()),
       lang.of([]),
+      lspComp.of([]),
       EditorState.readOnly.of(t.readonly),
       EditorView.editable.of(!t.readonly),
       EditorView.updateListener.of((u) => {
@@ -133,10 +147,36 @@
     }
   }
 
+  const lspKeys = keymap.of([
+    ...jumpToDefinitionKeymap, // F12
+    ...findReferencesKeymap, // Shift-F12
+    ...renameKeymap, // F2
+    ...signatureKeymap, // Ctrl-Shift-Space
+    ...formatKeymap, // Shift-Alt-f
+  ]);
+
+  async function attachLsp(t: EditorTab) {
+    const path = t.path;
+    if (!projectRoot || t.readonly || !isFileTab(t) || lspAttached.has(path)) return;
+    const ext = await lsp.extensionFor(path, projectRoot);
+    if (!ext || !view || lspAttached.has(path) || !isOpen(path)) return;
+    const effect = lspComp.reconfigure([ext, lspKeys]);
+    if (currentPath === path) view.dispatch({ effects: effect });
+    else {
+      const st = states.get(path);
+      if (!st) return;
+      states.set(path, st.update({ effects: effect }).state);
+    }
+    lspAttached.add(path);
+  }
+
   function show(t: EditorTab) {
     if (!view) return;
     if (currentPath && isOpen(currentPath)) states.set(currentPath, view.state);
-    for (const p of [...states.keys()]) if (!isOpen(p)) states.delete(p);
+    for (const p of [...states.keys()]) if (!isOpen(p)) {
+      states.delete(p);
+      lspAttached.delete(p);
+    }
     let st = states.get(t.path);
     if (st && (t.reloadToken ?? 0) !== (tokens.get(t.path) ?? 0)) {
       st = undefined; // reloaded while hidden: rebuild from the new content
@@ -149,6 +189,7 @@
     view.setState(st);
     scheduleCursor(view);
     if (fresh) void loadLanguage(t.path);
+    void attachLsp(t);
     view.focus();
   }
 
@@ -161,6 +202,7 @@
         if (np === null || np === p) continue;
         states.set(np, states.get(p)!);
         states.delete(p);
+        lspAttached.delete(p); // plugin is bound to the old URI: re-attach under the new path
         if (tokens.has(p)) tokens.set(np, tokens.get(p)!);
         tokens.delete(p);
       }
@@ -229,6 +271,15 @@
     view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
     view.focus();
     tab.revealRequest = undefined;
+  });
+
+  // Retry from the status bar: re-request the extension for the visible tab.
+  $effect(() => {
+    const ticked = lsp.tick > 0;
+    if (ticked && view && currentPath === tab.path) {
+      lspAttached.delete(tab.path); // a crashed server left a dead plugin behind
+      void attachLsp(tab);
+    }
   });
 
   // Re-measure and focus when the (kept-mounted) editor is shown again.

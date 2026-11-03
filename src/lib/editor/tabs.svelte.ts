@@ -2,6 +2,7 @@ import { readTextFile, writeTextFile, type Eol } from '../fs-client';
 import { decideDiskChange } from './disk-policy';
 import { showToast } from '../ui/toast.svelte';
 import type { BackupSink } from './hot-exit';
+import { lsp } from '../lsp/lsp-manager.svelte';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -93,6 +94,7 @@ export class Tabs {
   openRestored(path: string, content: string, savedContent: string, eol: Eol, deleted: boolean): void {
     if (this.tabs.some((t) => t.path === path && isFileTab(t))) return;
     this.tabs.push({ kind: 'file', path, name: nameOf(path), content, savedContent, eol, readonly: false, orphaned: deleted || undefined });
+    lsp.opened(path);
     if (this.activePath === null) this.activePath = path;
   }
 
@@ -117,6 +119,8 @@ export class Tabs {
       const old = t.path;
       t.path = np;
       t.name = nameOf(np);
+      lsp.closed(old);
+      lsp.opened(np);
       if (this.backup) {
         this.backup.discarded(old); // old-path backup must not be restored
         this.noteBackup(t);
@@ -143,6 +147,7 @@ export class Tabs {
       this.tabs.splice(j, 1);
       delete this.errors[t.path];
       this.backup?.saved(t.path); // clean tab gone: no backup should linger
+      lsp.closed(t.path);
       if (this.activePath === t.path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
     }
   }
@@ -355,6 +360,7 @@ export class Tabs {
           readonly: f.readonly,
           reason: f.reason ?? undefined,
         });
+        lsp.opened(path);
       }
       this.activePath = path;
       this.openError = null;
@@ -391,6 +397,7 @@ export class Tabs {
     this.tabs.splice(j, 1);
     delete this.errors[path];
     if (wasDirty && isFileTab(tab)) this.backup?.discarded(path);
+    if (isFileTab(tab)) lsp.closed(path);
     if (this.activePath === path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
   }
 

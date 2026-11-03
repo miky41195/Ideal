@@ -29,6 +29,7 @@
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
   import { createBackupScheduler, backupWrite, backupClear, backupClearAll, backupList, restoreBackups } from './lib/editor/hot-exit';
   import { hub } from './lib/hub/hub-store.svelte';
+  import { lsp } from './lib/lsp/lsp-manager.svelte';
   import { health } from './lib/hub/health.svelte';
   import { onTerminalActivity, debounce } from './lib/terminal/activity';
 
@@ -184,6 +185,7 @@
     }
     return () => {
       disposed = true;
+      void lsp.stopAll();
       offGit?.();
       offFs?.();
       offClose?.();
@@ -210,7 +212,7 @@
           </div>
           <!-- Editor stays mounted too, so per-tab state survives mode switches. -->
           <div class="editor" class:off={ws.mode !== 'editor'}>
-            <EditorArea visible={ws.mode === 'editor'} />
+            <EditorArea visible={ws.mode === 'editor'} projectRoot={project} />
           </div>
         </div>
         <BottomPanel cwd={project} open={ws.panelOpen} />

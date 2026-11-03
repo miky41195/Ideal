@@ -4,6 +4,8 @@ export interface Settings {
   theme: string;
   claudeMem: { port: number };
   layout: { sidebarWidth: number; panelHeight: number };
+  /** Language server overrides, read by the Rust side: `false` disables a language. */
+  lsp: Record<string, { command: string; args?: string[] } | false>;
 }
 
 export interface SettingsPayload {
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'ideal-dark',
   claudeMem: { port: 37777 },
   layout: { sidebarWidth: 260, panelHeight: 220 },
+  lsp: {},
 };
 
 export const WARNING_TEXT = 'settings.json non valido, uso i default';
@@ -31,6 +34,7 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
     theme: r.theme ?? d.theme,
     claudeMem: { ...d.claudeMem, ...r.claudeMem },
     layout: { ...d.layout, ...r.layout },
+    lsp: { ...d.lsp, ...r.lsp },
   };
 }
 

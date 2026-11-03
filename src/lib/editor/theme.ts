@@ -7,6 +7,13 @@ import type { Extension } from '@codemirror/state';
 export const baseTheme = (fontSize: number, fontFamily: string, extra: Record<string, Record<string, string>> = {}): Extension =>
   EditorView.theme({
     '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: `${fontSize}px` },
+    // LSP hover docs and completion info can be huge (whole crate docs): keep them a scrollable box.
+    '.cm-tooltip-hover, .cm-completionInfo': {
+      maxHeight: '40vh',
+      maxWidth: 'min(640px, 60vw)',
+      overflow: 'auto',
+      fontSize: '12.5px',
+    },
     '.cm-scroller': { fontFamily, lineHeight: '1.5' },
     '.cm-gutters': { backgroundColor: 'var(--panel)', color: 'var(--text-dim)', border: 'none' },
     '&.cm-focused': { outline: 'none' },
