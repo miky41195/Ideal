@@ -31,6 +31,21 @@ pub struct Launch {
     pub args: Vec<String>,
 }
 
+/// Env vars a parent Claude Code session leaks into Ideal when Ideal is launched from it.
+/// Passed on, they make the embedded `claude` think it is a child session (e.g. it stops
+/// saving transcripts). User config vars like `CLAUDE_CODE_USE_BEDROCK` are kept.
+const SESSION_MARKERS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_SESSION_ID",
+];
+
+pub fn session_markers(keys: impl Iterator<Item = String>) -> Vec<String> {
+    keys.filter(|k| SESSION_MARKERS.iter().any(|m| m.eq_ignore_ascii_case(k))).collect()
+}
+
 /// Turn a `PtyKind` into a concrete launch. `.cmd`/`.bat` go through `cmd.exe /c`.
 pub fn launch_for(kind: &PtyKind) -> Result<Launch, String> {
     match kind {
@@ -220,6 +235,9 @@ impl PtyManager {
         let mut cmd = CommandBuilder::new(&launch.program);
         cmd.args(&launch.args);
         cmd.cwd(cwd);
+        for key in session_markers(std::env::vars().map(|(k, _)| k)) {
+            cmd.env_remove(key);
+        }
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         drop(pair.slave);
         let pid = child.process_id();
@@ -463,6 +481,13 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         false
+    }
+
+    #[test]
+    fn session_markers_only_strips_session_vars() {
+        let keys = ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_USE_BEDROCK", "PATH", "claude_code_entrypoint"];
+        let got = session_markers(keys.iter().map(|s| s.to_string()));
+        assert_eq!(got, vec!["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "claude_code_entrypoint"]);
     }
 
     #[test]

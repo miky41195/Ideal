@@ -153,7 +153,7 @@
       void backupList(project)
         .then((list) => restoreBackups(tabs, list, (p) => void backupClear(project, p).catch(() => {})))
         .then((count) => {
-          if (count > 0) showToast(`Ripristinate ${count} modifiche non salvate`);
+          if (count > 0) showToast(count === 1 ? 'Ripristinata 1 modifica non salvata' : `Ripristinate ${count} modifiche non salvate`);
         })
         .catch((e) => console.warn('hot exit restore failed', e));
       offs.push(health.init());
