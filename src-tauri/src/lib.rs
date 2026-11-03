@@ -5,6 +5,7 @@ mod fs_cmds;
 mod fs_watch;
 mod git;
 mod hub;
+mod lsp;
 mod plugins;
 mod pty;
 mod search;
