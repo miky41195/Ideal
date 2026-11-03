@@ -50,6 +50,9 @@ export class LspManager {
   private entries = new Map<string, Entry>();
   private refs = new Map<string, number>();
   private noticed = new Set<string>();
+  private hints = new Map<string, { languageId: string; install: string }>();
+  /** Bumped by `retry` so open editors re-request their extension. */
+  tick = $state(0);
 
   constructor(private deps: LspDeps = defaultDeps) {}
 
@@ -101,6 +104,7 @@ export class LspManager {
     if (entry.serverId !== undefined) void this.deps.stop(entry.serverId).catch(() => {});
     if (err.missing) {
       this.state[entry.key] = 'missing';
+      this.hints.set(entry.key, { languageId, install: String(err.install ?? '') });
       if (!this.noticed.has(entry.key)) {
         this.noticed.add(entry.key);
         this.deps.notify(`Server ${languageId} non installato — installa con: ${err.install}`);
@@ -120,6 +124,21 @@ export class LspManager {
     this.clearTimer(entry);
     this.entries.delete(entry.key);
     this.state[entry.key] = 'error';
+  }
+
+  /** Clears a `missing`/`error` state so the next `extensionFor` starts the server again. */
+  retry(key: string): void {
+    const st = this.state[key];
+    if (st !== 'missing' && st !== 'error') return;
+    if (st === 'missing') this.noticed.delete(key);
+    delete this.state[key];
+    this.tick++;
+  }
+
+  /** Shows the install notice again (status bar click on "non installato"). */
+  showMissing(key: string): void {
+    const h = this.hints.get(key);
+    if (h) this.deps.notify(`Server ${h.languageId} non installato — installa con: ${h.install}`);
   }
 
   /** A file of this language was opened in a tab. */

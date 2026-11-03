@@ -5,8 +5,22 @@
   import { health } from '../hub/health.svelte';
   import { tabs, isFileTab } from '../editor/tabs.svelte';
   import { languageName } from '../editor/languages';
+  import { lsp } from '../lsp/lsp-manager.svelte';
+  import { languageIdFor, serverKeyFor } from '../lsp/lang';
+  import { lspStatusText } from '../lsp/status';
   let { mode, path }: { mode: Mode; path: string } = $props();
   const fileTab = $derived(mode === 'editor' && tabs.active && isFileTab(tabs.active) ? tabs.active : null);
+  const lspKey = $derived.by(() => {
+    const id = fileTab ? languageIdFor(fileTab.path) : null;
+    return id ? serverKeyFor(id) : null;
+  });
+  const lspState = $derived(lspKey ? lsp.state[lspKey] : undefined);
+  const lspText = $derived(fileTab ? lspStatusText(lspState, languageName(fileTab.path)) : null);
+  function lspClick() {
+    if (!lspKey) return;
+    if (lspState === 'missing') lsp.showMissing(lspKey);
+    else if (lspState === 'error') lsp.retry(lspKey);
+  }
 </script>
 
 <footer>
@@ -15,6 +29,13 @@
   {#if fileTab}
     <span>{languageName(fileTab.path)}</span>
     {#if tabs.cursor}<span>Ln {tabs.cursor.line}, Col {tabs.cursor.col}</span>{/if}
+    {#if lspText}
+      {#if lspState === 'missing' || lspState === 'error'}
+        <button class="lsp" title={lspState === 'missing' ? 'Mostra come installarlo' : 'Riprova ad avviare il server'} onclick={lspClick}>{lspText}</button>
+      {:else}
+        <span>{lspText}</span>
+      {/if}
+    {/if}
   {/if}
   {#if git.status?.isRepo && git.status.branch}
     <button class="branch" title="Apri Git" onclick={() => (workspace.sidebarView = 'git')}>
@@ -42,6 +63,14 @@
     background: var(--accent);
     color: #fff;
     font-size: 12px;
+  }
+  .lsp {
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
   }
   .branch {
     background: none;

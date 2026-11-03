@@ -172,4 +172,60 @@ describe('LspManager', () => {
     expect(deps.stop).toHaveBeenCalledTimes(2);
     expect(m.state).toEqual({});
   });
+
+  describe('retry / showMissing', () => {
+    it('retry clears an error so the next extensionFor restarts', async () => {
+      const { m, deps, exits } = setup();
+      await m.extensionFor(P('a.ts'), ROOT);
+      exits[1](1);
+      expect(await m.extensionFor(P('a.ts'), ROOT)).toBeNull();
+      m.retry('typescript-language-server');
+      expect(m.state['typescript-language-server']).toBeUndefined();
+      expect(await m.extensionFor(P('a.ts'), ROOT)).not.toBeNull();
+      expect(deps.start).toHaveBeenCalledTimes(2);
+    });
+
+    it('retry on a missing server re-arms the notice', async () => {
+      let n = 0;
+      const err = { missing: true, command: 'gopls', install: 'go install x', message: '' };
+      const { m, deps } = setup(async () => {
+        n++;
+        throw err;
+      });
+      await m.extensionFor(P('a.go'), ROOT);
+      m.retry('gopls');
+      await m.extensionFor(P('a.go'), ROOT);
+      expect(n).toBe(2);
+      expect(deps.notify).toHaveBeenCalledTimes(2);
+    });
+
+    it('retry does nothing for a ready server', async () => {
+      const { m, deps } = setup();
+      await m.extensionFor(P('a.ts'), ROOT);
+      m.retry('typescript-language-server');
+      expect(m.state['typescript-language-server']).toBe('ready');
+      expect(deps.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('showMissing re-shows the install notice without restarting', async () => {
+      const err = { missing: true, command: 'gopls', install: 'go install x', message: '' };
+      const { m, deps } = setup(async () => {
+        throw err;
+      });
+      await m.extensionFor(P('a.go'), ROOT);
+      m.showMissing('gopls');
+      expect(deps.notify).toHaveBeenCalledTimes(2);
+      expect(deps.notify).toHaveBeenLastCalledWith('Server go non installato — installa con: go install x');
+      expect(deps.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('retry bumps the attach tick so editors re-request their extension', async () => {
+      const { m, exits } = setup();
+      await m.extensionFor(P('a.ts'), ROOT);
+      exits[1](1);
+      const before = m.tick;
+      m.retry('typescript-language-server');
+      expect(m.tick).toBe(before + 1);
+    });
+  });
 });
