@@ -15,6 +15,7 @@
   import EditorArea from './lib/editor/EditorArea.svelte';
   import ClaudeTabs from './lib/claude/ClaudeTabs.svelte';
   import Palette from './lib/palette/Palette.svelte';
+  import QuickOpen from './lib/search/QuickOpen.svelte';
   import Toasts from './lib/ui/Toasts.svelte';
   import { settings } from './lib/settings/settings.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -48,6 +49,10 @@
       idleRefresh.cancel,
       onCommand('toggleMode', () => ws.toggleMode()),
       onCommand('togglePanel', () => ws.togglePanel()),
+      onCommand('searchProject', () => {
+        // SearchPanel focuses itself on mount, or via the same command when already shown.
+        ws.sidebarView = 'search';
+      }),
       onCommand('newClaudeTab', () => {
         ws.addClaudeTab('new');
         ws.showClaude();
@@ -121,6 +126,7 @@
     </div>
     <StatusBar mode={ws.mode} path={project} />
     <Palette />
+    <QuickOpen projectPath={project} />
   </div>
 {/if}
 <Toasts />

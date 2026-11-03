@@ -293,3 +293,18 @@ describe('file/diff interplay', () => {
     expect(t.activeFileTab).toBeUndefined();
   });
 });
+
+describe('reveal', () => {
+  it('opens the file and sets a one-shot reveal request', async () => {
+    const t = new Tabs();
+    await t.reveal('/p/a.ts', 2, 1, 3);
+    expect(t.activePath).toBe('/p/a.ts');
+    expect(t.active?.revealRequest).toEqual({ line: 2, col: 1, len: 3 });
+  });
+  it('does nothing when the file cannot be opened', async () => {
+    read.mockRejectedValueOnce('nope');
+    const t = new Tabs();
+    await t.reveal('/p/x.ts', 1);
+    expect(t.tabs).toHaveLength(0);
+  });
+});

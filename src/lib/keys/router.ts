@@ -3,6 +3,7 @@ export type Command =
   | 'toggleMode'
   | 'palette'
   | 'quickOpen'
+  | 'searchProject'
   | 'togglePanel'
   | 'newClaudeTab'
   | 'save'
@@ -31,6 +32,7 @@ export const DEFAULT_BINDINGS: Binding[] = [
   { code: 'KeyE', ctrl: true, shift: true, focus: ANY, command: 'toggleMode' },
   { code: 'KeyP', ctrl: true, shift: true, focus: ANY, command: 'palette' },
   { code: 'KeyO', ctrl: true, shift: true, focus: ANY, command: 'quickOpen' },
+  { code: 'KeyF', ctrl: true, shift: true, focus: ANY, command: 'searchProject' },
   { code: 'Backquote', ctrl: true, shift: true, focus: ANY, command: 'togglePanel' },
   { code: 'KeyT', ctrl: true, shift: true, focus: ANY, command: 'newClaudeTab' },
   { code: 'KeyS', ctrl: true, shift: true, focus: ANY, command: 'saveAll' },

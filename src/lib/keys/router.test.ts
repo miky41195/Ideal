@@ -46,3 +46,9 @@ describe('routeKey other focus', () => {
     expect(routeKey(cs('KeyS'), 'other')).toBe('saveAll');
   });
 });
+
+describe('find in project', () => {
+  it('Ctrl+Shift+F routes to searchProject in every focus', () => {
+    for (const f of ['terminal', 'editor', 'other'] as const) expect(routeKey(cs('KeyF', 'F'), f)).toBe('searchProject');
+  });
+});

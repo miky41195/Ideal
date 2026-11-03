@@ -97,6 +97,11 @@
       EditorView.editable.of(!t.readonly),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && currentPath) onchange(currentPath, u.state.doc.toString());
+        if (u.selectionSet || u.docChanged) {
+          const r = u.state.selection.main;
+          const txt = r.empty || r.to - r.from > 200 ? '' : u.state.sliceDoc(r.from, r.to);
+          tabs.selectionHint = /[\r\n]/.test(txt) ? '' : txt;
+        }
       }),
     ];
   }
@@ -159,6 +164,20 @@
   $effect(() => {
     const t = tab;
     if (t.path !== currentPath) show(t);
+  });
+
+  // Reveal requests (find in project): select the range and scroll it into view, then clear the request.
+  $effect(() => {
+    const req = tab.revealRequest;
+    if (!req || !view) return;
+    if (tab.path !== currentPath) show(tab);
+    const doc = view.state.doc;
+    const line = doc.line(Math.min(Math.max(1, req.line), doc.lines));
+    const from = Math.min(line.from + Math.max(0, req.col), line.to);
+    const to = Math.min(from + Math.max(0, req.len), line.to);
+    view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+    view.focus();
+    tab.revealRequest = undefined;
   });
 
   // Re-measure and focus when the (kept-mounted) editor is shown again.

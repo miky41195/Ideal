@@ -25,6 +25,15 @@ export interface EditorTab {
   reason?: string;
   /** File/folder deleted on disk while the tab had unsaved edits; saving recreates it. */
   orphaned?: boolean;
+  /** One-shot request for the editor to select a range and scroll to it; consumed (cleared) by CodeEditor. */
+  revealRequest?: RevealRequest;
+}
+
+export interface RevealRequest {
+  /** 1-based line. */
+  line: number;
+  col: number;
+  len: number;
 }
 
 export const isFileTab = (tab: EditorTab): boolean => (tab.kind ?? 'file') === 'file';
@@ -49,6 +58,8 @@ export class Tabs {
   /** Save errors, per path; cleared only by that path's successful save or close. */
   errors = $state<Record<string, string>>({});
   openError = $state<string | null>(null);
+  /** Current single-line editor selection (empty if none); used to prefill find-in-project. */
+  selectionHint = '';
   private lastFilePath: string | null = null;
   private savedListeners = new Set<() => void>();
   private retargetListeners = new Set<(from: string, to: string) => void>();
@@ -200,6 +211,15 @@ export class Tabs {
     } catch (e) {
       this.openError = `Impossibile aprire ${nameOf(path)}: ${String(e)}`;
     }
+  }
+
+  /** Opens `path` if needed, then asks the editor to select `[col, col+len)` on 1-based `line`. */
+  async reveal(path: string, line: number, col = 0, len = 0): Promise<void> {
+    await this.openFile(path);
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t) return;
+    t.revealRequest = { line, col, len };
+    this.activePath = path;
   }
 
   setContent(path: string, content: string): void {

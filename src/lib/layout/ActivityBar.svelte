@@ -7,6 +7,7 @@
     { id: 'explorer', icon: '🗂', label: 'Esplora file' },
     { id: 'git', icon: '⎇', label: 'Git' },
     { id: 'heatmap', icon: '▦', label: 'Heatmap' },
+    { id: 'search', icon: '⌕', label: 'Cerca nel progetto' },
     { id: 'notes', icon: '✎', label: 'Note' },
     { id: 'hub', icon: '✦', label: 'Claude Hub' },
   ];
