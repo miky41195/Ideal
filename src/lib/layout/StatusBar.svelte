@@ -3,12 +3,19 @@
   import { git } from '../git/git-store.svelte';
   import { workspace } from '../state/workspace.svelte';
   import { health } from '../hub/health.svelte';
+  import { tabs, isFileTab } from '../editor/tabs.svelte';
+  import { languageName } from '../editor/languages';
   let { mode, path }: { mode: Mode; path: string } = $props();
+  const fileTab = $derived(mode === 'editor' && tabs.active && isFileTab(tabs.active) ? tabs.active : null);
 </script>
 
 <footer>
   <span>{mode === 'claude' ? '✦ Claude' : '✎ Editor'}</span>
   <span class="path" title={path}>{path}</span>
+  {#if fileTab}
+    <span>{languageName(fileTab.path)}</span>
+    {#if tabs.cursor}<span>Ln {tabs.cursor.line}, Col {tabs.cursor.col}</span>{/if}
+  {/if}
   {#if git.status?.isRepo && git.status.branch}
     <button class="branch" title="Apri Git" onclick={() => (workspace.sidebarView = 'git')}>
       ⎇ {git.status.branch}{#if git.status.upstream}{#if git.status.ahead} ↑{git.status.ahead}{/if}{#if git.status.behind} ↓{git.status.behind}{/if}{/if}

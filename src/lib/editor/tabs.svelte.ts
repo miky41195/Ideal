@@ -70,6 +70,8 @@ export class Tabs {
   openError = $state<string | null>(null);
   /** Current single-line editor selection (empty if none); used to prefill find-in-project. */
   selectionHint = '';
+  /** Cursor of the active editor, 1-based line and column (chars); updated at most once per frame. */
+  cursor = $state<{ line: number; col: number } | null>(null);
   private lastFilePath: string | null = null;
   private diskJobs = new Map<string, { pending: boolean; done: Promise<void> }>();
   private backup: BackupSink | null = null;

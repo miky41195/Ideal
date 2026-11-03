@@ -14,3 +14,14 @@ describe('languageFor', () => {
     expect(await languageFor('x.toml')).toBeNull();
   });
 });
+
+describe('languageName', () => {
+  it('names known extensions and falls back to plain text', async () => {
+    const { languageName } = await import('./languages');
+    expect(languageName('a.ts')).toBe('TypeScript');
+    expect(languageName('C:\\x\\b.rs')).toBe('Rust');
+    expect(languageName('README.md')).toBe('Markdown');
+    expect(languageName('x.toml')).toBe('Testo semplice');
+    expect(languageName('Makefile')).toBe('Testo semplice');
+  });
+});

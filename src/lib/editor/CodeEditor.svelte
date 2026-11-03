@@ -66,6 +66,17 @@
     indentUnit.of(' '.repeat(settings.value.editor.tabSize)),
   ];
 
+  let cursorFrame = 0;
+  function scheduleCursor(v: EditorView) {
+    if (cursorFrame) return;
+    cursorFrame = requestAnimationFrame(() => {
+      cursorFrame = 0;
+      const head = v.state.selection.main.head;
+      const line = v.state.doc.lineAt(head);
+      tabs.cursor = { line: line.number, col: head - line.from + 1 };
+    });
+  }
+
   function extensions(t: EditorTab): Extension[] {
     return [
       lineNumbers(),
@@ -102,6 +113,7 @@
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !applyingExternal && currentPath) onchange(currentPath, u.state.doc.toString());
         if (u.selectionSet || u.docChanged) {
+          scheduleCursor(u.view);
           const r = u.state.selection.main;
           const txt = r.empty || r.to - r.from > 200 ? '' : u.state.sliceDoc(r.from, r.to);
           tabs.selectionHint = /[\r\n]/.test(txt) ? '' : txt;
@@ -135,6 +147,7 @@
     if (!st) st = EditorState.create({ doc: t.content, extensions: extensions(t) });
     currentPath = t.path;
     view.setState(st);
+    scheduleCursor(view);
     if (fresh) void loadLanguage(t.path);
     view.focus();
   }
@@ -155,6 +168,7 @@
     });
     return () => {
       off();
+      if (cursorFrame) cancelAnimationFrame(cursorFrame);
       view?.destroy();
       view = undefined;
     };

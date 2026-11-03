@@ -37,6 +37,21 @@ const BY_EXT: Record<string, Loader> = {
   yml: async () => (await import('@codemirror/lang-yaml')).yaml(),
 };
 
+const NAMES: Record<string, string> = {
+  ts: 'TypeScript', tsx: 'TypeScript React', mts: 'TypeScript', cts: 'TypeScript',
+  js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript React',
+  html: 'HTML', htm: 'HTML', css: 'CSS', scss: 'SCSS', json: 'JSON', jsonc: 'JSON',
+  py: 'Python', rs: 'Rust', go: 'Go', c: 'C', h: 'C', cpp: 'C++', hpp: 'C++', cc: 'C++', cxx: 'C++', hh: 'C++',
+  java: 'Java', md: 'Markdown', markdown: 'Markdown', yaml: 'YAML', yml: 'YAML',
+};
+
+/** Human-readable language name for the status bar. */
+export function languageName(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? path;
+  const dot = base.lastIndexOf('.');
+  return (dot >= 0 && NAMES[base.slice(dot + 1).toLowerCase()]) || 'Testo semplice';
+}
+
 /** Resolve a CodeMirror language by file extension (lazy-loaded). */
 export async function languageFor(path: string): Promise<LanguageSupport | null> {
   const base = path.split(/[\\/]/).pop() ?? path;
