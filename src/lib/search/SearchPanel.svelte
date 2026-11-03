@@ -122,7 +122,7 @@
   <div class="results">
     {#each groups as g (g.path)}
       <div class="file" title={g.path}>{g.path} <span class="n">{g.items.length}</span></div>
-      {#each g.items as m (m.line + ':' + m.col)}
+      {#each g.items as m, i (g.path + ':' + m.line + ':' + i)}
         <button class="row" onclick={() => go(m)}><span class="ln">{m.line}</span><span class="tx">{m.text.trim()}</span></button>
       {/each}
     {/each}

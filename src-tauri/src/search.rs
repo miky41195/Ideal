@@ -87,11 +87,12 @@ fn utf16_len(s: &str) -> u32 {
 fn window_text(line: &str, s: usize, en: usize) -> Option<(String, u32, u32)> {
     let pre = line.get(..s)?;
     let mt = line.get(s..en)?;
-    let start_char = pre.chars().count();
-    let first = if start_char < MAX_TEXT_CHARS / 2 { 0 } else { start_char - MAX_TEXT_CHARS / 4 };
-    let chars: Vec<(usize, char)> = line.char_indices().collect();
-    let w_start = chars.get(first).map_or(line.len(), |c| c.0);
-    let w_end = chars.get(first + MAX_TEXT_CHARS).map_or(line.len(), |c| c.0);
+    let w_start = if pre.chars().take(MAX_TEXT_CHARS / 2).count() < MAX_TEXT_CHARS / 2 {
+        0
+    } else {
+        pre.char_indices().rev().nth(MAX_TEXT_CHARS / 4 - 1).map_or(0, |c| c.0)
+    };
+    let w_end = line[w_start..].char_indices().nth(MAX_TEXT_CHARS).map_or(line.len(), |c| w_start + c.0);
     let m_end = en.min(w_end);
     let text = &line[w_start..w_end];
     let _ = mt;

@@ -11,7 +11,7 @@ describe('routeKey terminal focus', () => {
   it('captures Ctrl+Shift combos', () => {
     expect(routeKey(cs('KeyE', 'E'), 'terminal')).toBe('toggleMode');
     expect(routeKey(cs('KeyP', 'P'), 'terminal')).toBe('palette');
-    expect(routeKey(cs('KeyO', 'O'), 'terminal')).toBe('quickOpen');
+    expect(routeKey(cs('KeyO', 'O'), 'terminal')).toBe('quickOpenAny');
     expect(routeKey(cs('Backquote', '~'), 'terminal')).toBe('togglePanel');
     expect(routeKey(cs('KeyT', 'T'), 'terminal')).toBe('newClaudeTab');
     expect(routeKey(cs('KeyS', 'S'), 'terminal')).toBe('saveAll');

@@ -24,8 +24,12 @@
     sel = 0;
   });
 
-  onMount(() =>
-    onCommand('quickOpen', async () => {
+  onMount(() => {
+    const offs = [onCommand('quickOpen', openBox), onCommand('quickOpenAny', openBox)];
+    return () => offs.forEach((f) => f());
+  });
+
+  async function openBox() {
       prevFocus = document.activeElement as HTMLElement | null;
       query = '';
       error = null;
@@ -42,8 +46,7 @@
         });
       await tick();
       input?.focus();
-    }),
-  );
+  }
 
   function close(restore = true) {
     open = false;
