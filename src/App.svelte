@@ -24,6 +24,8 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { initGit, git } from './lib/git/git-store.svelte';
+  import { fsWatch } from './lib/fs-client';
+  import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { tabs, hasUnsaved } from './lib/editor/tabs.svelte';
   import { hub } from './lib/hub/hub-store.svelte';
   import { health } from './lib/hub/health.svelte';
@@ -137,10 +139,16 @@
     window.addEventListener('keydown', onKey);
     let offClose: (() => void) | undefined;
     let offGit: (() => void) | undefined;
+    let offFs: (() => void) | undefined;
     let disposed = false;
     if (project) {
       hub.projectPath = project;
       offs.push(health.init());
+      void getCurrentWebviewWindow()
+        .listen<{ paths: string[] }>('fs://changed', (e) => void tabs.onDiskChanged(e.payload.paths))
+        .then((f) => (disposed ? f() : (offFs = f)))
+        .then(() => fsWatch(project))
+        .catch((e) => console.warn('fs watch failed', e));
       void initGit(project).then((f) => (disposed ? f() : (offGit = f)));
       void getCurrentWindow()
         .onCloseRequested(async (e) => {
@@ -156,6 +164,7 @@
     return () => {
       disposed = true;
       offGit?.();
+      offFs?.();
       offClose?.();
       offs.forEach((f) => f());
       window.removeEventListener('keydown', onKey);

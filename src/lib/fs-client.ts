@@ -50,3 +50,6 @@ export function renamePath(from: string, to: string): Promise<void> {
 export function deletePath(path: string): Promise<void> {
   return invoke<void>('delete_path', { path });
 }
+
+/** Starts (replacing any previous) the recursive watcher of this window; emits `fs://changed`. */
+export const fsWatch = (root: string) => invoke<void>('fs_watch', { root });

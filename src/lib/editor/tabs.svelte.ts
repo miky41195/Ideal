@@ -1,4 +1,5 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
+import { decideDiskChange } from './disk-policy';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -25,6 +26,10 @@ export interface EditorTab {
   reason?: string;
   /** File/folder deleted on disk while the tab had unsaved edits; saving recreates it. */
   orphaned?: boolean;
+  /** Disk text (LF) of a file that changed on disk while the buffer had unsaved edits; shows the banner. */
+  diskConflict?: string;
+  /** Bumped when the editor must replace its document with `content` (external reload). */
+  reloadToken?: number;
   /** One-shot request for the editor to select a range and scroll to it; consumed (cleared) by CodeEditor. */
   revealRequest?: RevealRequest;
 }
@@ -49,6 +54,9 @@ export function remapPath(p: string, from: string, to: string): string | null {
   return null;
 }
 
+const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+const samePath = (a: string, b: string) => normPath(a) === normPath(b);
+
 const HEATMAP_ID = 'heatmap:';
 const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -61,6 +69,7 @@ export class Tabs {
   /** Current single-line editor selection (empty if none); used to prefill find-in-project. */
   selectionHint = '';
   private lastFilePath: string | null = null;
+  private diskJobs = new Map<string, { pending: boolean; done: Promise<void> }>();
   private savedListeners = new Set<() => void>();
   private retargetListeners = new Set<(from: string, to: string) => void>();
 
@@ -107,6 +116,96 @@ export class Tabs {
       this.tabs.splice(j, 1);
       delete this.errors[t.path];
       if (this.activePath === t.path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
+    }
+  }
+
+  /** Opens (or refreshes and focuses) a diff of the disk text (left) against the buffer (right). */
+  openCompare(path: string, diskText: string, bufferText: string): void {
+    this.openDiff(`diff:disk:${path}`, `${nameOf(path)} ↔ disco`, { old: diskText, new: bufferText, binary: false, langPath: path });
+  }
+
+  /** Banner action: take the disk version, dropping the buffer's edits. */
+  reloadFromDisk(path: string): void {
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t || t.diskConflict === undefined) return;
+    this.applyReload(t, t.diskConflict);
+  }
+
+  /** Banner action: keep the buffer; disk becomes the saved baseline so the next save overwrites knowingly. */
+  keepMine(path: string): void {
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t || t.diskConflict === undefined) return;
+    t.savedContent = t.diskConflict;
+    t.diskConflict = undefined;
+  }
+
+  private applyReload(t: EditorTab, disk: string): void {
+    t.content = disk;
+    t.savedContent = disk;
+    t.diskConflict = undefined;
+    t.orphaned = false;
+    t.reloadToken = (t.reloadToken ?? 0) + 1;
+  }
+
+  /** Files changed on disk (absolute paths): re-read the open ones and apply the external-change policy. */
+  async onDiskChanged(paths: string[]): Promise<void> {
+    const jobs: Promise<void>[] = [];
+    for (const t of this.tabs) {
+      if (!isFileTab(t) || !paths.some((p) => samePath(p, t.path))) continue;
+      jobs.push(this.diskJob(t.path));
+    }
+    await Promise.all(jobs);
+  }
+
+  /** Serialized per path: a change arriving during a read just schedules one more read (latest wins). */
+  private diskJob(path: string): Promise<void> {
+    const running = this.diskJobs.get(path);
+    if (running) {
+      running.pending = true;
+      return running.done;
+    }
+    const job = { pending: false, done: Promise.resolve() };
+    job.done = (async () => {
+      try {
+        do {
+          job.pending = false;
+          await this.checkDisk(path);
+        } while (job.pending);
+      } finally {
+        this.diskJobs.delete(path);
+      }
+    })();
+    this.diskJobs.set(path, job);
+    return job.done;
+  }
+
+  private async checkDisk(path: string): Promise<void> {
+    let disk: string | null = null;
+    let eol: Eol | undefined;
+    try {
+      const f = await readTextFile(path);
+      disk = f.content;
+      eol = f.eol;
+    } catch {
+      disk = null;
+    }
+    const cur = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!cur) return;
+    switch (decideDiskChange(cur, disk)) {
+      case 'ignore':
+        if (disk !== null && disk !== cur.savedContent) cur.savedContent = disk; // dirty buffer already equals disk
+        cur.diskConflict = undefined;
+        break;
+      case 'reload':
+        if (eol) cur.eol = eol;
+        this.applyReload(cur, disk!);
+        break;
+      case 'conflict':
+        cur.diskConflict = disk!;
+        break;
+      case 'deleted':
+        this.orphan(path);
+        break;
     }
   }
 

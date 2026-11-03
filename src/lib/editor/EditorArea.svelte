@@ -8,6 +8,7 @@
   import DocView from '../hub/DocView.svelte';
   import TranscriptView from '../hub/TranscriptView.svelte';
   import CodeEditor from './CodeEditor.svelte';
+  import DiskBanner from './DiskBanner.svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
 
@@ -50,6 +51,9 @@
     {@const onFile = tabs.active === tabs.activeFileTab}
     {#if onFile && tabs.active.readonly}
       <div class="banner">Sola lettura: {tabs.active.reason ?? 'non modificabile'}</div>
+    {/if}
+    {#if onFile && tabs.active.diskConflict !== undefined}
+      <DiskBanner tab={tabs.active} />
     {/if}
     <div class="main">
       {#if tabs.activeFileTab}

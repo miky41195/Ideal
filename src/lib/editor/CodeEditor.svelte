@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { EditorState, Compartment, type Extension } from '@codemirror/state';
+  import { EditorState, Compartment, Transaction, type Extension } from '@codemirror/state';
   import {
     EditorView,
     keymap,
@@ -26,6 +26,7 @@
   import { languageFor } from './languages';
   import { settings } from '../settings/settings.svelte';
   import { tabs, remapPath, type EditorTab } from './tabs.svelte';
+  import { clampSelection } from './disk-policy';
 
   let {
     tab,
@@ -47,6 +48,9 @@
   const look = new Compartment();
   const indent = new Compartment();
   let currentPath: string | null = null;
+  // Last reloadToken applied per path; a mismatch means the doc must be replaced from tab.content.
+  const tokens = new Map<string, number>();
+  let applyingExternal = false;
 
   const makeTheme = (fontSize: number, fontFamily: string) =>
     baseTheme(fontSize, fontFamily, {
@@ -96,7 +100,7 @@
       EditorState.readOnly.of(t.readonly),
       EditorView.editable.of(!t.readonly),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged && currentPath) onchange(currentPath, u.state.doc.toString());
+        if (u.docChanged && !applyingExternal && currentPath) onchange(currentPath, u.state.doc.toString());
         if (u.selectionSet || u.docChanged) {
           const r = u.state.selection.main;
           const txt = r.empty || r.to - r.from > 200 ? '' : u.state.sliceDoc(r.from, r.to);
@@ -122,6 +126,11 @@
     if (currentPath && isOpen(currentPath)) states.set(currentPath, view.state);
     for (const p of [...states.keys()]) if (!isOpen(p)) states.delete(p);
     let st = states.get(t.path);
+    if (st && (t.reloadToken ?? 0) !== (tokens.get(t.path) ?? 0)) {
+      st = undefined; // reloaded while hidden: rebuild from the new content
+      states.delete(t.path);
+    }
+    tokens.set(t.path, t.reloadToken ?? 0);
     const fresh = !st;
     if (!st) st = EditorState.create({ doc: t.content, extensions: extensions(t) });
     currentPath = t.path;
@@ -139,6 +148,8 @@
         if (np === null || np === p) continue;
         states.set(np, states.get(p)!);
         states.delete(p);
+        if (tokens.has(p)) tokens.set(np, tokens.get(p)!);
+        tokens.delete(p);
       }
       if (currentPath) currentPath = remapPath(currentPath, from, to) ?? currentPath;
     });
@@ -164,6 +175,32 @@
   $effect(() => {
     const t = tab;
     if (t.path !== currentPath) show(t);
+  });
+
+  // External reload of the visible tab: replace the doc, keep clamped selection and scroll, no undo entry, not a user edit.
+  $effect(() => {
+    const t = tab;
+    const tok = t.reloadToken ?? 0;
+    if (!view || t.path !== currentPath || tok === (tokens.get(t.path) ?? 0)) return;
+    tokens.set(t.path, tok);
+    const cur = view.state.doc.toString();
+    if (cur === t.content) return;
+    const sel = clampSelection(view.state.selection.main, t.content.length);
+    const top = view.scrollDOM.scrollTop;
+    applyingExternal = true;
+    try {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: t.content },
+        selection: sel,
+        annotations: Transaction.addToHistory.of(false),
+      });
+    } finally {
+      applyingExternal = false;
+    }
+    view.scrollDOM.scrollTop = top;
+    requestAnimationFrame(() => {
+      if (view) view.scrollDOM.scrollTop = top;
+    });
   });
 
   // Reveal requests (find in project): select the range and scroll it into view, then clear the request.
