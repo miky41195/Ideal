@@ -19,7 +19,7 @@ export interface ClientLike {
 }
 
 export interface LspDeps {
-  start(languageId: string, root: string, onExit: (code: number | null) => void): Promise<{ serverId: number; transport: Transport }>;
+  start(languageId: string, root: string, onExit: (code: number | null, error?: LspStartError) => void): Promise<{ serverId: number; transport: Transport }>;
   stop(serverId: number): Promise<void>;
   createClient(rootUri: string): ClientLike;
   notify(message: string): void;
@@ -76,7 +76,7 @@ export class LspManager {
     this.state[key] = 'starting';
     entry.ready = (async () => {
       try {
-        const { serverId, transport } = await this.deps.start(languageId, root, () => this.crashed(entry));
+        const { serverId, transport } = await this.deps.start(languageId, root, (_code, error) => this.crashed(entry, languageId, error));
         entry.serverId = serverId;
         if (this.entries.get(key) !== entry) {
           // stopped (stopAll / idle) while starting
@@ -118,8 +118,13 @@ export class LspManager {
     this.entries.delete(entry.key);
   }
 
-  private crashed(entry: Entry): void {
+  private crashed(entry: Entry, languageId: string, error?: LspStartError): void {
     if (this.entries.get(entry.key) !== entry) return;
+    // Died while starting (e.g. a launcher stub saying the server isn't installed): treat as a start failure.
+    if (this.state[entry.key] === 'starting' && error) {
+      this.fail(entry, error, languageId);
+      return;
+    }
     entry.client?.disconnect();
     this.clearTimer(entry);
     this.entries.delete(entry.key);

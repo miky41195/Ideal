@@ -108,8 +108,21 @@ pub struct LspServers {
 }
 
 fn exit_message(code: Option<i32>) -> String {
+    exit_message_with(code, None)
+}
+
+/// A server that dies within this window after spawn is reported with a classified start error.
+const EARLY_EXIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn exit_message_with(code: Option<i32>, error: Option<&LspStartError>) -> String {
     let code = code.map_or("null".to_string(), |c| c.to_string());
-    format!("{{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{{\"code\":{code}}}}}")
+    match error {
+        None => format!("{{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{{\"code\":{code}}}}}"),
+        Some(e) => {
+            let err = serde_json::to_string(e).unwrap_or_else(|_| "null".into());
+            format!("{{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{{\"code\":{code},\"error\":{err}}}}}")
+        }
+    }
 }
 
 /// 6 × 50 ms: how long a freshly spawned server must survive to count as started.
@@ -235,6 +248,8 @@ pub fn start_impl(
     mgr.servers.lock().unwrap_or_else(|e| e.into_inner()).insert(id, server.clone());
 
     let map = mgr.servers.clone();
+    let spawned = std::time::Instant::now();
+    let (cmd_name, install_hint) = (command.clone(), install.to_string());
     std::thread::spawn(move || {
         let mut dec = Decoder::default();
         let mut buf = [0u8; 16 * 1024];
@@ -249,7 +264,14 @@ pub fn start_impl(
         let code = child.wait().ok().and_then(|s| s.code());
         server.exited.store(true, Ordering::SeqCst);
         map.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-        sink(exit_message(code));
+        if spawned.elapsed() < EARLY_EXIT_WINDOW {
+            // Slow launcher stubs (rustup proxy ~1 s) exit after the spawn check: classify here.
+            let _ = drainer.join();
+            let tail = String::from_utf8_lossy(&server.stderr.lock().unwrap_or_else(|e| e.into_inner())).trim().to_string();
+            sink(exit_message_with(code, Some(&early_exit_error(&cmd_name, &install_hint, code, &tail))));
+        } else {
+            sink(exit_message(code));
+        }
     });
     Ok(LspStarted { server_id: id, reused: false })
 }
@@ -446,7 +468,29 @@ mod tests {
         // Exits after the early-exit window: a running server that later dies.
         start_impl(&mgr, "w", "typescript", ".", &custom(&["-e", "setTimeout(() => process.exit(3), 1500)"]), &real_lookup, s).unwrap();
         let msg = rx.recv_timeout(Duration::from_secs(10)).unwrap();
-        assert_eq!(msg, "{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{\"code\":3}}");
+        // Within the early window: the exit carries a classified (non-missing) error.
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(v["method"], "$/ideal/exit");
+        assert_eq!(v["params"]["code"], 3);
+        assert_eq!(v["params"]["error"]["missing"], false);
+    }
+
+    #[test]
+    fn late_slow_stub_exit_is_classified_missing() {
+        if !node_available() { return; }
+        let mgr = LspServers::default();
+        let (s, rx) = sink();
+        let script = "setTimeout(() => { process.stderr.write(\"error: Unknown binary 'rust-analyzer.exe'\"); process.exit(1) }, 800)";
+        start_impl(&mgr, "w", "rust", ".", &custom_for("rust", &["-e", script]), &real_lookup, s).unwrap();
+        let msg = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(v["params"]["error"]["missing"], true);
+        assert_eq!(v["params"]["error"]["install"], "rustup component add rust-analyzer");
+    }
+
+    #[test]
+    fn plain_exit_message_format() {
+        assert_eq!(exit_message(Some(3)), "{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{\"code\":3}}");
     }
 
     #[test]

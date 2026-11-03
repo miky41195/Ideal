@@ -41,7 +41,7 @@ describe('createTransport', () => {
     const h = vi.fn();
     t.subscribe(h);
     ch.onmessage('{"jsonrpc":"2.0","method":"$/ideal/exit","params":{"code":3}}');
-    expect(onExit).toHaveBeenCalledWith(3);
+    expect(onExit).toHaveBeenCalledWith(3, undefined);
     expect(h).not.toHaveBeenCalled();
   });
 

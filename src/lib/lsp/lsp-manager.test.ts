@@ -38,6 +38,27 @@ function setup(startImpl?: LspDeps['start']) {
 }
 
 describe('LspManager', () => {
+  it('stub_exit_during_start_is_missing', async () => {
+    let fireExit: ((c: number | null, e?: unknown) => void) | undefined;
+    let resolveInit!: () => void;
+    const { m, deps } = setup(async (_l: string, _r: string, onExit: (c: number | null) => void) => {
+      fireExit = onExit as (c: number | null, e?: unknown) => void;
+      return { serverId: 7, transport: { send: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() } };
+    });
+    deps.createClient.mockImplementation(() => ({
+      initializing: new Promise<void>((r) => (resolveInit = r)),
+      connect: vi.fn(),
+      disconnect: vi.fn(() => resolveInit()),
+      plugin: vi.fn(),
+    }) as unknown as ClientLike);
+    const pending = m.extensionFor(P('a.rs'), ROOT);
+    await vi.waitFor(() => expect(fireExit).toBeDefined());
+    fireExit!(1, { missing: true, command: 'rust-analyzer', install: 'rustup component add rust-analyzer', message: 'Unknown binary' });
+    expect(await pending).toBeNull();
+    expect(m.state['rust-analyzer']).toBe('missing');
+    expect(deps.notify).toHaveBeenCalledWith(expect.stringContaining('rustup component add rust-analyzer'));
+  });
+
   it('unknown language -> null, no server', async () => {
     const { m, deps } = setup();
     expect(await m.extensionFor(P('a.md'), ROOT)).toBeNull();

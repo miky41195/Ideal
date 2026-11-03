@@ -27,15 +27,15 @@ const EXIT_METHOD = '$/ideal/exit';
 export function createTransport(
   serverId: number,
   source: MessageSource,
-  onExit: (code: number | null) => void,
+  onExit: (code: number | null, error?: LspStartError) => void,
 ): Transport {
   const handlers = new Set<(m: string) => void>();
   source.onmessage = (raw: string) => {
     if (raw.includes(EXIT_METHOD)) {
       try {
-        const msg = JSON.parse(raw) as { method?: string; params?: { code?: number | null } };
+        const msg = JSON.parse(raw) as { method?: string; params?: { code?: number | null; error?: LspStartError } };
         if (msg.method === EXIT_METHOD) {
-          onExit(msg.params?.code ?? null);
+          onExit(msg.params?.code ?? null, msg.params?.error);
           return;
         }
       } catch {
@@ -57,7 +57,7 @@ export function createTransport(
 export async function startServer(
   languageId: string,
   root: string,
-  onExit: (code: number | null) => void,
+  onExit: (code: number | null, error?: LspStartError) => void,
 ): Promise<{ serverId: number; transport: Transport }> {
   const channel = new Channel<string>();
   const { serverId } = await invoke<LspStarted>('lsp_start', { languageId, root, onMessage: channel });
