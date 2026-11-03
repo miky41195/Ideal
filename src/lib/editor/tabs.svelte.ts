@@ -411,6 +411,7 @@ export class Tabs {
       t.orphaned = false;
       delete this.errors[path];
       this.noteBackup(t); // clean now (or edited again while saving)
+      lsp.saved(path);
       this.savedListeners.forEach((f) => f());
     } catch (e) {
       this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;

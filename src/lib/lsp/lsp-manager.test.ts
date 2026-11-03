@@ -250,3 +250,19 @@ describe('LspManager', () => {
     });
   });
 });
+
+describe('saved', () => {
+  it('sends didSave to a ready server only', async () => {
+    const { m, clients } = setup();
+    m.saved(P('x.ts')); // no server yet: no-op
+    await m.extensionFor(P('a.ts'), ROOT);
+    const c = clients[0] as unknown as { notification: ReturnType<typeof vi.fn>; sync: ReturnType<typeof vi.fn> };
+    c.notification = vi.fn();
+    c.sync = vi.fn();
+    m.saved(P('a.ts'));
+    expect(c.sync).toHaveBeenCalled();
+    expect(c.notification).toHaveBeenCalledWith('textDocument/didSave', { textDocument: { uri: 'file:///C:/p/a.ts' } });
+    m.saved(P('readme.md'));
+    expect(c.notification).toHaveBeenCalledTimes(1);
+  });
+});

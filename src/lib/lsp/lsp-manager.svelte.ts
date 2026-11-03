@@ -17,6 +17,8 @@ export interface ClientLike {
   connect(transport: Transport): unknown;
   disconnect(): void;
   plugin(uri: string, languageId: string): Extension;
+  sync?(): void;
+  notification?(method: string, params: unknown): void;
 }
 
 export interface LspDeps {
@@ -145,6 +147,19 @@ export class LspManager {
   showMissing(key: string): void {
     const h = this.hints.get(key);
     if (h) this.deps.notify(`Server ${h.languageId} non installato — installa con: ${h.install}`);
+  }
+
+  /** A file was saved to disk: tell its server (rust-analyzer runs `cargo check` on save). */
+  saved(path: string): void {
+    const key = this.keyOf(path);
+    const client = key ? this.entries.get(key)?.client : undefined;
+    if (!client || this.state[key!] !== 'ready') return;
+    try {
+      client.sync?.();
+      client.notification?.('textDocument/didSave', { textDocument: { uri: pathToUri(path) } });
+    } catch {
+      /* server gone: the exit notice handles state */
+    }
   }
 
   /** A file of this language was opened in a tab. */
