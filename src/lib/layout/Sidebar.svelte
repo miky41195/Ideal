@@ -3,11 +3,13 @@
   import Explorer from '../explorer/Explorer.svelte';
   import GitPanel from '../git/GitPanel.svelte';
   import HubPanel from '../hub/HubPanel.svelte';
+  import SearchPanel from '../search/SearchPanel.svelte';
   import NotesPanel from '../notes/NotesPanel.svelte';
   let { view, projectPath }: { view: SidebarView; projectPath: string } = $props();
   const titles: Record<SidebarView, string> = {
     explorer: 'Esplora file',
     git: 'Git',
+    search: 'Cerca nel progetto',
     notes: 'Note',
     hub: 'Claude Hub',
   };
@@ -19,6 +21,8 @@
     <Explorer root={projectPath} />
   {:else if view === 'git'}
     <GitPanel />
+  {:else if view === 'search'}
+    <SearchPanel {projectPath} />
   {:else if view === 'notes'}
     <NotesPanel {projectPath} />
   {:else if view === 'hub'}

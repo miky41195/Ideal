@@ -293,3 +293,190 @@ describe('file/diff interplay', () => {
     expect(t.activeFileTab).toBeUndefined();
   });
 });
+
+describe('reveal', () => {
+  it('opens the file and sets a one-shot reveal request', async () => {
+    const t = new Tabs();
+    await t.reveal('/p/a.ts', 2, 1, 3);
+    expect(t.activePath).toBe('/p/a.ts');
+    expect(t.active?.revealRequest).toEqual({ line: 2, col: 1, len: 3 });
+  });
+  it('does nothing when the file cannot be opened', async () => {
+    read.mockRejectedValueOnce('nope');
+    const t = new Tabs();
+    await t.reveal('/p/x.ts', 1);
+    expect(t.tabs).toHaveLength(0);
+  });
+});
+
+describe('onDiskChanged', () => {
+  const P = 'C:\\p\\a.ts';
+  const NF = 'The system cannot find the file specified. (os error 2)';
+  const disk = (content: string) => read.mockResolvedValue({ content, eol: 'lf', readonly: false, reason: null });
+
+  it('clean tab reloads both texts and bumps reloadToken', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    disk('two');
+    await t.onDiskChanged(['c:/p/A.ts']);
+    const tab = t.tabs[0];
+    expect(tab.content).toBe('two');
+    expect(tab.savedContent).toBe('two');
+    expect(tab.reloadToken).toBe(1);
+  });
+
+  it('dirty tab with different disk gets diskConflict, content kept', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    disk('theirs');
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].diskConflict).toBe('theirs');
+    expect(t.tabs[0].content).toBe('mine');
+  });
+
+  it('own save echo is ignored', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'saved');
+    await t.save(P);
+    disk('saved');
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].reloadToken ?? 0).toBe(0);
+    expect(t.tabs[0].diskConflict).toBeUndefined();
+  });
+
+  it('dirty tab whose disk equals buffer adopts savedContent', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'same');
+    disk('same');
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].savedContent).toBe('same');
+    expect(t.tabs[0].diskConflict).toBeUndefined();
+  });
+
+  it('keepMine sets savedContent = disk and clears conflict; reloadFromDisk replaces content', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    disk('theirs');
+    await t.onDiskChanged([P]);
+    t.keepMine(P);
+    expect(t.tabs[0].savedContent).toBe('theirs');
+    expect(t.tabs[0].diskConflict).toBeUndefined();
+    expect(t.tabs[0].content).toBe('mine');
+    disk('theirs2');
+    await t.onDiskChanged([P]);
+    t.reloadFromDisk(P);
+    expect(t.tabs[0].content).toBe('theirs2');
+    expect(t.tabs[0].savedContent).toBe('theirs2');
+    expect(t.tabs[0].diskConflict).toBeUndefined();
+    expect(t.tabs[0].reloadToken).toBe(1);
+  });
+
+  it('openCompare opens a diff tab left disk right buffer', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.openCompare(P, 'disk text', 'buffer text');
+    const d = t.tabs.find((x) => x.kind === 'diff')!;
+    expect(d.name).toBe('a.ts ↔ disco');
+    expect(d.diff).toMatchObject({ old: 'disk text', new: 'buffer text', binary: false, langPath: P });
+  });
+
+  it('deleted: clean tab closes, dirty tab flagged orphaned', async () => {
+    const t = new Tabs();
+    t.recheckDelayMs = 0;
+    disk('one');
+    await t.openFile(P);
+    read.mockRejectedValue('os error 2');
+    await t.onDiskChanged([P]);
+    expect(t.tabs).toHaveLength(0);
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    read.mockRejectedValue('os error 2');
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].orphaned).toBe(true);
+  });
+
+  it('burst of 3 changes: one read applied with the last state', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    read.mockClear();
+    let n = 0;
+    read.mockImplementation(async () => ({ content: `v${++n}`, eol: 'lf', readonly: false, reason: null }));
+    await Promise.all([t.onDiskChanged([P]), t.onDiskChanged([P]), t.onDiskChanged([P])]);
+    expect(read.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(t.tabs[0].content).toBe(`v${n}`);
+  });
+
+  it('sharing violation keeps the tab untouched', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    read.mockRejectedValue('Il file è utilizzato da un altro processo. (os error 32)');
+    await t.onDiskChanged([P]);
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].orphaned).toBeFalsy();
+  });
+
+  it('not found then found on recheck is not deleted', async () => {
+    const t = new Tabs();
+    t.recheckDelayMs = 0;
+    disk('one');
+    await t.openFile(P);
+    read.mockRejectedValueOnce(NF);
+    read.mockResolvedValueOnce({ content: 'two', eol: 'lf', readonly: false, reason: null });
+    await t.onDiskChanged([P]);
+    expect(t.tabs).toHaveLength(1);
+    expect(t.tabs[0].content).toBe('two');
+  });
+
+  it('not found twice closes a clean tab', async () => {
+    const t = new Tabs();
+    t.recheckDelayMs = 0;
+    disk('one');
+    await t.openFile(P);
+    read.mockRejectedValue(NF);
+    await t.onDiskChanged([P]);
+    expect(t.tabs).toHaveLength(0);
+  });
+
+  it('readonly disk result never replaces the text', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    read.mockResolvedValue({ content: '', eol: 'lf', readonly: true, reason: 'binario' });
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].content).toBe('one');
+    expect(t.tabs[0].savedContent).toBe('one');
+    expect(t.tabs[0].readonly).toBe(true);
+    expect(t.tabs[0].reason).toBe('binario');
+  });
+
+  it('readonly disk result on a dirty tab keeps the buffer and does not flag it readonly', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    read.mockResolvedValue({ content: '', eol: 'lf', readonly: true, reason: 'troppo grande' });
+    await t.onDiskChanged([P]);
+    expect(t.tabs[0].content).toBe('mine');
+    expect(t.tabs[0].readonly).toBe(false);
+    expect(t.tabs[0].diskConflict).toBeUndefined();
+  });
+
+  it('ignores paths without an open file tab', async () => {
+    const t = new Tabs();
+    await t.onDiskChanged(['C:\\other\\x.ts']);
+    expect(read).not.toHaveBeenCalled();
+  });
+});

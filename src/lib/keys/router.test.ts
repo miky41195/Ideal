@@ -11,7 +11,7 @@ describe('routeKey terminal focus', () => {
   it('captures Ctrl+Shift combos', () => {
     expect(routeKey(cs('KeyE', 'E'), 'terminal')).toBe('toggleMode');
     expect(routeKey(cs('KeyP', 'P'), 'terminal')).toBe('palette');
-    expect(routeKey(cs('KeyO', 'O'), 'terminal')).toBe('quickOpen');
+    expect(routeKey(cs('KeyO', 'O'), 'terminal')).toBe('quickOpenAny');
     expect(routeKey(cs('Backquote', '~'), 'terminal')).toBe('togglePanel');
     expect(routeKey(cs('KeyT', 'T'), 'terminal')).toBe('newClaudeTab');
     expect(routeKey(cs('KeyS', 'S'), 'terminal')).toBe('saveAll');
@@ -44,5 +44,11 @@ describe('routeKey other focus', () => {
   it('captures Ctrl+Shift combos in any focus', () => {
     expect(routeKey(cs('KeyT'), 'other')).toBe('newClaudeTab');
     expect(routeKey(cs('KeyS'), 'other')).toBe('saveAll');
+  });
+});
+
+describe('find in project', () => {
+  it('Ctrl+Shift+F routes to searchProject in every focus', () => {
+    for (const f of ['terminal', 'editor', 'other'] as const) expect(routeKey(cs('KeyF', 'F'), f)).toBe('searchProject');
   });
 });

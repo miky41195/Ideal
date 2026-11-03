@@ -1,10 +1,13 @@
+mod backups;
 mod claude;
 mod claude_mem;
 mod fs_cmds;
+mod fs_watch;
 mod git;
 mod hub;
 mod plugins;
 mod pty;
+mod search;
 mod settings;
 
 use tauri::{Manager, RunEvent, WindowEvent};
@@ -17,6 +20,8 @@ pub fn run() {
         .manage(git::history::HeatmapCache::default())
         .manage(git::watch::GitWatchers::default())
         .manage(hub::SessionCache::default())
+        .manage(search::SearchGens::default())
+        .manage(fs_watch::FsWatchers::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -48,6 +53,10 @@ pub fn run() {
             git::history::git_heatmap,
             git::history::git_day_commits,
             git::watch::git_watch,
+            backups::backup_write,
+            backups::backup_clear,
+            backups::backup_list,
+            backups::backup_clear_all,
             settings::get_settings,
             settings::settings_path,
             settings::get_recent,
@@ -64,7 +73,10 @@ pub fn run() {
             hub::sessions_list,
             hub::session_read,
             hub::memories_list,
-            hub::docs_list
+            hub::docs_list,
+            fs_watch::fs_watch,
+            search::project_files,
+            search::project_search
         ])
         .setup(|app| {
             settings::start_watcher(app.handle().clone());
@@ -74,6 +86,8 @@ pub fn run() {
             if let WindowEvent::Destroyed = event {
                 window.app_handle().state::<pty::PtyManager>().kill_owned_by(window.label());
                 window.app_handle().state::<git::watch::GitWatchers>().remove(window.label());
+                window.app_handle().state::<search::SearchGens>().remove(window.label());
+                window.app_handle().state::<fs_watch::FsWatchers>().remove(window.label());
             }
         })
         .build(tauri::generate_context!())

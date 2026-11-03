@@ -8,6 +8,10 @@ describe('isCommandAllowed', () => {
       expect(isCommandAllowed(c, 'editor')).toBe(true);
     }
   });
+  it('quickOpenAny (Ctrl+Shift+O) works in claude mode, plain quickOpen (Ctrl+P) does not', () => {
+    expect(isCommandAllowed('quickOpenAny', 'claude')).toBe(true);
+    expect(isCommandAllowed('quickOpen', 'claude')).toBe(false);
+  });
   it('allows global commands in both modes', () => {
     expect(isCommandAllowed('toggleMode', 'claude')).toBe(true);
     expect(isCommandAllowed('newClaudeTab', 'editor')).toBe(true);

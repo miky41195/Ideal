@@ -1,4 +1,7 @@
 import { readTextFile, writeTextFile, type Eol } from '../fs-client';
+import { decideDiskChange } from './disk-policy';
+import { showToast } from '../ui/toast.svelte';
+import type { BackupSink } from './hot-exit';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -25,6 +28,19 @@ export interface EditorTab {
   reason?: string;
   /** File/folder deleted on disk while the tab had unsaved edits; saving recreates it. */
   orphaned?: boolean;
+  /** Disk text (LF) of a file that changed on disk while the buffer had unsaved edits; shows the banner. */
+  diskConflict?: string;
+  /** Bumped when the editor must replace its document with `content` (external reload). */
+  reloadToken?: number;
+  /** One-shot request for the editor to select a range and scroll to it; consumed (cleared) by CodeEditor. */
+  revealRequest?: RevealRequest;
+}
+
+export interface RevealRequest {
+  /** 1-based line. */
+  line: number;
+  col: number;
+  len: number;
 }
 
 export const isFileTab = (tab: EditorTab): boolean => (tab.kind ?? 'file') === 'file';
@@ -40,6 +56,9 @@ export function remapPath(p: string, from: string, to: string): string | null {
   return null;
 }
 
+const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+const samePath = (a: string, b: string) => normPath(a) === normPath(b);
+
 const HEATMAP_ID = 'heatmap:';
 const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -49,9 +68,33 @@ export class Tabs {
   /** Save errors, per path; cleared only by that path's successful save or close. */
   errors = $state<Record<string, string>>({});
   openError = $state<string | null>(null);
+  /** Current single-line editor selection (empty if none); used to prefill find-in-project. */
+  selectionHint = '';
+  /** Cursor of the active editor, 1-based line and column (chars); updated at most once per frame. */
+  cursor = $state<{ line: number; col: number } | null>(null);
   private lastFilePath: string | null = null;
+  private diskJobs = new Map<string, { pending: boolean; done: Promise<void> }>();
+  private backup: BackupSink | null = null;
   private savedListeners = new Set<() => void>();
   private retargetListeners = new Set<(from: string, to: string) => void>();
+
+  /** Hot-exit hook: told when a file buffer becomes dirty, clean again, or is thrown away. */
+  setBackupSink(sink: BackupSink | null): void {
+    this.backup = sink;
+  }
+
+  private noteBackup(t: EditorTab): void {
+    if (!this.backup || !isFileTab(t) || t.readonly) return;
+    if (dirty(t)) this.backup.changed(t.path, t.content, t.eol);
+    else this.backup.saved(t.path);
+  }
+
+  /** Opens a tab restored from a hot-exit backup: `content` (backup) is dirty against `savedContent` (current disk text). */
+  openRestored(path: string, content: string, savedContent: string, eol: Eol, deleted: boolean): void {
+    if (this.tabs.some((t) => t.path === path && isFileTab(t))) return;
+    this.tabs.push({ kind: 'file', path, name: nameOf(path), content, savedContent, eol, readonly: false, orphaned: deleted || undefined });
+    if (this.activePath === null) this.activePath = path;
+  }
 
   /** Notified after a file was saved successfully (e.g. to refresh git status). */
   onSaved(fn: () => void): () => void {
@@ -74,6 +117,10 @@ export class Tabs {
       const old = t.path;
       t.path = np;
       t.name = nameOf(np);
+      if (this.backup) {
+        this.backup.discarded(old); // old-path backup must not be restored
+        this.noteBackup(t);
+      }
       if (old in this.errors) {
         this.errors[np] = this.errors[old];
         delete this.errors[old];
@@ -95,7 +142,121 @@ export class Tabs {
       const j = this.tabs.findIndex((x) => x.path === t.path);
       this.tabs.splice(j, 1);
       delete this.errors[t.path];
+      this.backup?.saved(t.path); // clean tab gone: no backup should linger
       if (this.activePath === t.path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
+    }
+  }
+
+  /** Opens (or refreshes and focuses) a diff of the disk text (left) against the buffer (right). */
+  openCompare(path: string, diskText: string, bufferText: string): void {
+    this.openDiff(`diff:disk:${path}`, `${nameOf(path)} ↔ disco`, { old: diskText, new: bufferText, binary: false, langPath: path });
+  }
+
+  /** Banner action: take the disk version, dropping the buffer's edits. */
+  reloadFromDisk(path: string): void {
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t || t.diskConflict === undefined) return;
+    this.applyReload(t, t.diskConflict);
+  }
+
+  /** Banner action: keep the buffer; disk becomes the saved baseline so the next save overwrites knowingly. */
+  keepMine(path: string): void {
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t || t.diskConflict === undefined) return;
+    t.savedContent = t.diskConflict;
+    t.diskConflict = undefined;
+    this.noteBackup(t);
+  }
+
+  private applyReload(t: EditorTab, disk: string): void {
+    t.content = disk;
+    t.savedContent = disk;
+    t.diskConflict = undefined;
+    t.orphaned = false;
+    t.reloadToken = (t.reloadToken ?? 0) + 1;
+    this.noteBackup(t);
+  }
+
+  /** Files changed on disk (absolute paths): re-read the open ones and apply the external-change policy. */
+  async onDiskChanged(paths: string[]): Promise<void> {
+    const jobs: Promise<void>[] = [];
+    for (const t of this.tabs) {
+      if (!isFileTab(t) || !paths.some((p) => samePath(p, t.path))) continue;
+      jobs.push(this.diskJob(t.path));
+    }
+    await Promise.all(jobs);
+  }
+
+  /** Serialized per path: a change arriving during a read just schedules one more read (latest wins). */
+  private diskJob(path: string): Promise<void> {
+    const running = this.diskJobs.get(path);
+    if (running) {
+      running.pending = true;
+      return running.done;
+    }
+    const job = { pending: false, done: Promise.resolve() };
+    job.done = (async () => {
+      try {
+        do {
+          job.pending = false;
+          await this.checkDisk(path);
+        } while (job.pending);
+      } finally {
+        this.diskJobs.delete(path);
+      }
+    })();
+    this.diskJobs.set(path, job);
+    return job.done;
+  }
+
+  /** Delay before re-checking a path that looked missing (atomic rewrites leave it briefly absent). */
+  recheckDelayMs = 300;
+
+  private async readDisk(path: string): Promise<{ text: string; eol: Eol } | { readonly: string } | 'missing' | 'error'> {
+    try {
+      const f = await readTextFile(path);
+      if (f.readonly) return { readonly: f.reason ?? 'non modificabile' };
+      return { text: f.content, eol: f.eol };
+    } catch (e) {
+      return /os error (2|3)\b/.test(String(e)) ? 'missing' : 'error';
+    }
+  }
+
+  private async checkDisk(path: string): Promise<void> {
+    let r = await this.readDisk(path);
+    if (r === 'missing') {
+      await new Promise((res) => setTimeout(res, this.recheckDelayMs));
+      r = await this.readDisk(path);
+    }
+    const cur = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!cur || r === 'error') return; // unreadable right now (sharing violation...): keep the tab as is
+    if (typeof r === 'object' && 'readonly' in r) {
+      // Binary / too large / not UTF-8 now: its "content" is not the file text, never load it.
+      const reason = r.readonly;
+      if (dirty(cur)) showToast('File su disco non più leggibile come testo');
+      else {
+        cur.readonly = true;
+        cur.reason = reason;
+      }
+      return;
+    }
+    const disk = r === 'missing' ? null : (r as { text: string }).text;
+    switch (decideDiskChange(cur, disk)) {
+      case 'ignore':
+        if (disk !== null && disk !== cur.savedContent) cur.savedContent = disk; // dirty buffer already equals disk
+        this.noteBackup(cur);
+        cur.diskConflict = undefined;
+        break;
+      case 'reload':
+        cur.eol = (r as { eol: Eol }).eol;
+        this.applyReload(cur, disk!);
+        break;
+      case 'conflict':
+        cur.diskConflict = disk!;
+        break;
+      case 'deleted':
+        this.orphan(path);
+        break;
     }
   }
 
@@ -202,9 +363,21 @@ export class Tabs {
     }
   }
 
+  /** Opens `path` if needed, then asks the editor to select `[col, col+len)` on 1-based `line`. */
+  async reveal(path: string, line: number, col = 0, len = 0): Promise<void> {
+    await this.openFile(path);
+    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    if (!t) return;
+    t.revealRequest = { line, col, len };
+    this.activePath = path;
+  }
+
   setContent(path: string, content: string): void {
     const t = this.tabs.find((x) => x.path === path);
-    if (t && !t.readonly) t.content = content;
+    if (t && !t.readonly) {
+      t.content = content;
+      this.noteBackup(t);
+    }
   }
 
   async closeTab(path: string, confirmDirty: (name: string) => Promise<boolean>): Promise<void> {
@@ -214,8 +387,10 @@ export class Tabs {
     if (dirty(tab) && !(await confirmDirty(tab.name))) return;
     const j = this.tabs.findIndex((t) => t.path === path);
     if (j < 0) return;
+    const wasDirty = dirty(tab);
     this.tabs.splice(j, 1);
     delete this.errors[path];
+    if (wasDirty && isFileTab(tab)) this.backup?.discarded(path);
     if (this.activePath === path) this.activePath = this.tabs[Math.max(0, j - 1)]?.path ?? null;
   }
 
@@ -228,6 +403,7 @@ export class Tabs {
       t.savedContent = snapshot;
       t.orphaned = false;
       delete this.errors[path];
+      this.noteBackup(t); // clean now (or edited again while saving)
       this.savedListeners.forEach((f) => f());
     } catch (e) {
       this.errors[path] = `Salvataggio di ${t.name} non riuscito: ${String(e)}`;

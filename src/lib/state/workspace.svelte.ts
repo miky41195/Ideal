@@ -1,5 +1,5 @@
 export type Mode = 'claude' | 'editor';
-export type SidebarView = 'explorer' | 'git' | 'notes' | 'hub';
+export type SidebarView = 'explorer' | 'git' | 'notes' | 'hub' | 'search';
 export type ClaudeTabKind = 'new' | 'continue' | 'resume';
 
 export interface ClaudeTab {
