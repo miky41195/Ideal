@@ -275,8 +275,11 @@
 
   // Retry from the status bar: re-request the extension for the visible tab.
   $effect(() => {
-    void lsp.tick;
-    if (view && currentPath === tab.path) void attachLsp(tab);
+    const ticked = lsp.tick > 0;
+    if (ticked && view && currentPath === tab.path) {
+      lspAttached.delete(tab.path); // a crashed server left a dead plugin behind
+      void attachLsp(tab);
+    }
   });
 
   // Re-measure and focus when the (kept-mounted) editor is shown again.
