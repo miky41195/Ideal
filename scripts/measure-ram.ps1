@@ -8,7 +8,7 @@ param([string]$ProcessName = 'ideal')
 
 $TotalBudgetMB = 250
 $MainBudgetMB = 50
-$Excluded = @('claude*', 'pwsh*', 'powershell*', 'cmd*', 'conhost*', 'OpenConsole*')
+$Excluded = @('claude*', 'pwsh*', 'powershell*', 'cmd*', 'conhost*', 'OpenConsole*', 'rust-analyzer*', 'node*', 'gopls*', 'clangd*', 'pyright*', 'java*')
 
 $all = Get-CimInstance Win32_Process
 $perf = @{}
