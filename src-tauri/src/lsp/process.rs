@@ -112,6 +112,23 @@ fn exit_message(code: Option<i32>) -> String {
     format!("{{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{{\"code\":{code}}}}}")
 }
 
+/// 6 × 50 ms: how long a freshly spawned server must survive to count as started.
+const EARLY_EXIT_CHECKS: u32 = 6;
+
+/// Error for a server that exited right after spawn. Stub/launcher messages that mean
+/// "not installed" become `missing` so the UI shows the install command.
+pub fn early_exit_error(command: &str, install: &str, code: Option<i32>, stderr: &str) -> LspStartError {
+    let low = stderr.to_lowercase();
+    let missing = ["unknown binary", "is not installed", "not recognized", "not found"]
+        .iter()
+        .any(|p| low.contains(p));
+    let mut msg: String = stderr.chars().take(500).collect();
+    if msg.is_empty() {
+        msg = format!("{command} terminato subito (codice {})", code.map_or("?".into(), |c| c.to_string()));
+    }
+    LspStartError { missing, command: command.into(), install: install.into(), message: msg }
+}
+
 fn drain_stderr(mut err: impl Read, ring: Arc<Mutex<Vec<u8>>>) {
     let mut buf = [0u8; 4096];
     while let Ok(n) = err.read(&mut buf) {
@@ -192,9 +209,19 @@ pub fn start_impl(
     let mut stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
     let ring = Arc::new(Mutex::new(Vec::new()));
-    {
+    let drainer = {
         let ring = ring.clone();
-        std::thread::spawn(move || drain_stderr(stderr, ring));
+        std::thread::spawn(move || drain_stderr(stderr, ring))
+    };
+    // A launcher stub (e.g. the rustup proxy without the component) exits at once:
+    // report it as a start error, not as a running server that later "crashes".
+    for _ in 0..EARLY_EXIT_CHECKS {
+        if let Ok(Some(status)) = child.try_wait() {
+            let _ = drainer.join();
+            let tail = String::from_utf8_lossy(&ring.lock().unwrap_or_else(|e| e.into_inner())).trim().to_string();
+            return Err(early_exit_error(&command, install, status.code(), &tail));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     let id = mgr.next_id.fetch_add(1, Ordering::SeqCst) + 1;
     let server = Arc::new(Server {
@@ -319,9 +346,13 @@ mod tests {
     }
 
     fn custom(args: &[&str]) -> HashMap<String, Override> {
+        custom_for("typescript", args)
+    }
+
+    fn custom_for(language: &str, args: &[&str]) -> HashMap<String, Override> {
         let mut m = HashMap::new();
         m.insert(
-            "typescript".to_string(),
+            language.to_string(),
             Override::Custom { command: "node".into(), args: args.iter().map(|s| s.to_string()).collect() },
         );
         m
@@ -412,9 +443,32 @@ mod tests {
         if !node_available() { return; }
         let mgr = LspServers::default();
         let (s, rx) = sink();
-        start_impl(&mgr, "w", "typescript", ".", &custom(&["-e", "process.exit(3)"]), &real_lookup, s).unwrap();
+        // Exits after the early-exit window: a running server that later dies.
+        start_impl(&mgr, "w", "typescript", ".", &custom(&["-e", "setTimeout(() => process.exit(3), 1500)"]), &real_lookup, s).unwrap();
         let msg = rx.recv_timeout(Duration::from_secs(10)).unwrap();
         assert_eq!(msg, "{\"jsonrpc\":\"2.0\",\"method\":\"$/ideal/exit\",\"params\":{\"code\":3}}");
+    }
+
+    #[test]
+    fn immediate_exit_is_a_start_error() {
+        if !node_available() { return; }
+        let mgr = LspServers::default();
+        let (s, _rx) = sink();
+        let script = "process.stderr.write(\"error: Unknown binary 'rust-analyzer.exe'\"); process.exit(1)";
+        let err = start_impl(&mgr, "w", "rust", ".", &custom_for("rust", &["-e", script]), &real_lookup, s).unwrap_err();
+        assert!(err.missing, "{err:?}");
+        assert!(err.message.contains("Unknown binary"));
+    }
+
+    #[test]
+    fn early_exit_error_classifies() {
+        let e = early_exit_error("rust-analyzer", "rustup component add rust-analyzer", Some(1), "error: Unknown binary 'rust-analyzer.exe' in official toolchain");
+        assert!(e.missing);
+        assert_eq!(e.install, "rustup component add rust-analyzer");
+        let e = early_exit_error("x", "", Some(2), "panic: boom");
+        assert!(!e.missing);
+        let e = early_exit_error("x", "", Some(2), "");
+        assert_eq!(e.message, "x terminato subito (codice 2)");
     }
 
     #[test]
