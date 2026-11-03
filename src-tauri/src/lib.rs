@@ -5,6 +5,7 @@ mod git;
 mod hub;
 mod plugins;
 mod pty;
+mod search;
 mod settings;
 
 use tauri::{Manager, RunEvent, WindowEvent};
@@ -64,7 +65,9 @@ pub fn run() {
             hub::sessions_list,
             hub::session_read,
             hub::memories_list,
-            hub::docs_list
+            hub::docs_list,
+            search::project_files,
+            search::project_search
         ])
         .setup(|app| {
             settings::start_watcher(app.handle().clone());
