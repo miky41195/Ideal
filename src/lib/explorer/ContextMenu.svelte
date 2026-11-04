@@ -52,7 +52,7 @@
     background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 6px 20px #0008;
+    box-shadow: var(--shadow-pop);
   }
   button {
     width: 100%;

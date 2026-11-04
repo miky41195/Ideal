@@ -5,6 +5,7 @@
   import { setClaudeSender } from './send-bridge';
   import type { PtyKind } from '../terminal/pty-client';
   import type { ClaudeTab, Workspace } from '../state/workspace.svelte';
+  import Icon from '../ui/Icon.svelte';
 
   let { ws, cwd, visible }: { ws: Workspace; cwd: string; visible: boolean } = $props();
 
@@ -63,20 +64,16 @@
 </script>
 
 <div class="pane">
+  {#if ws.claudeTabs.length > 1}
   <div class="strip">
     {#each ws.claudeTabs as t (t.id)}
       <div class="tab" class:on={t.id === ws.activeClaudeId}>
         <button class="label" onclick={() => ws.selectClaudeTab(t.id)}>{t.title}</button>
-        <button class="x" title="Chiudi" aria-label="Chiudi {t.title}" onclick={() => close(t.id)}>×</button>
+        <button class="x" title="Chiudi" aria-label="Chiudi {t.title}" onclick={() => close(t.id)}><Icon name="close" size={12} /></button>
       </div>
     {/each}
-    <button class="add" title="Nuova sessione (Ctrl+Maiusc+T)" aria-label="Nuova sessione" onclick={() => ws.addClaudeTab('new')}>+</button>
-    <button
-      class="resume"
-      title="costa più token; claude-mem dà già il contesto"
-      onclick={() => ws.addClaudeTab('continue')}>Riprendi ultima</button
-    >
   </div>
+  {/if}
 
   <div class="stage">
     {#each ws.claudeTabs as t (t.id)}
@@ -132,43 +129,42 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 32px;
+    height: 28px;
     padding: 0 6px;
     background: var(--panel);
-    border-bottom: 1px solid var(--border);
     flex: none;
   }
   .tab {
     display: flex;
     align-items: center;
-    border-radius: 5px;
+    border-radius: var(--radius-s);
     color: var(--text-dim);
   }
   .tab.on {
-    background: var(--accent-soft);
+    background: var(--panel-2);
     color: var(--text);
   }
-  .tab button {
-    padding: 3px 8px;
+  .label {
+    padding: 1px 2px 1px 8px;
+  }
+  .label:hover:not(:disabled) {
+    background: none;
   }
   .x {
-    padding: 3px 6px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
     color: var(--text-dim);
   }
-  .add {
-    padding: 2px 9px;
-    font-size: 15px;
-  }
-  .resume {
-    margin-left: auto;
-    padding: 3px 10px;
-    color: var(--text-dim);
-    border-color: var(--border);
+  .x:hover:not(:disabled) {
+    color: var(--text);
   }
   .stage {
     position: relative;
     flex: 1;
     min-height: 0;
+    background: var(--bg);
   }
   .slot {
     position: absolute;
@@ -206,6 +202,11 @@
   .primary {
     padding: 8px 18px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  .primary:hover:not(:disabled) {
+    background: var(--accent);
+    filter: brightness(1.08);
   }
 </style>

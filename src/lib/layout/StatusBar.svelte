@@ -1,14 +1,12 @@
 <script lang="ts">
   import type { Mode } from '../state/workspace.svelte';
-  import { git } from '../git/git-store.svelte';
-  import { workspace } from '../state/workspace.svelte';
   import { health } from '../hub/health.svelte';
   import { tabs, isFileTab } from '../editor/tabs.svelte';
   import { languageName } from '../editor/languages';
   import { lsp } from '../lsp/lsp-manager.svelte';
   import { languageIdFor, serverKeyFor } from '../lsp/lang';
   import { lspStatusText } from '../lsp/status';
-  let { mode, path }: { mode: Mode; path: string } = $props();
+  let { mode }: { mode: Mode } = $props();
   const fileTab = $derived(mode === 'editor' && tabs.active && isFileTab(tabs.active) ? tabs.active : null);
   const lspKey = $derived.by(() => {
     const id = fileTab ? languageIdFor(fileTab.path) : null;
@@ -24,8 +22,6 @@
 </script>
 
 <footer>
-  <span>{mode === 'claude' ? '✦ Claude' : '✎ Editor'}</span>
-  <span class="path" title={path}>{path}</span>
   {#if fileTab}
     <span>{languageName(fileTab.path)}</span>
     {#if tabs.cursor}<span>Ln {tabs.cursor.line}, Col {tabs.cursor.col}</span>{/if}
@@ -37,79 +33,58 @@
       {/if}
     {/if}
   {/if}
-  {#if git.status?.isRepo && git.status.branch}
-    <button class="branch" title="Apri Git" onclick={() => (workspace.sidebarView = 'git')}>
-      ⎇ {git.status.branch}{#if git.status.upstream}{#if git.status.ahead} ↑{git.status.ahead}{/if}{#if git.status.behind} ↓{git.status.behind}{/if}{/if}
+  {#if health.mem === 'down'}
+    <button class="mem down" title="Avvia claude-mem" onclick={() => void health.ensureWorker()}>
+      <span class="dot"></span>claude-mem spento, clic per avviare
     </button>
+  {:else if health.mem !== 'unknown'}
+    <span class="mem {health.mem}"><span class="dot"></span>{health.mem === 'up' ? 'claude-mem attivo' : 'claude-mem in avvio…'}</span>
   {/if}
-  <button
-    class="mem {health.mem}"
-    disabled={health.mem === 'starting' || health.mem === 'up'}
-    title={health.mem === 'up' ? 'claude-mem attivo' : health.mem === 'starting' ? 'avvio…' : 'claude-mem spento — clic per avviare'}
-    onclick={() => void health.ensureWorker()}
-  >
-    <span class="dot">●</span>
-    {health.mem === 'up' ? 'claude-mem attivo' : health.mem === 'starting' ? 'avvio…' : health.mem === 'down' ? 'claude-mem spento — clic per avviare' : ''}
-  </button>
 </footer>
 
 <style>
   footer {
     display: flex;
-    gap: 16px;
+    gap: 14px;
     align-items: center;
-    height: 22px;
+    justify-content: flex-end;
+    flex: none;
+    height: 24px;
     padding: 0 10px;
-    background: var(--accent);
-    color: #fff;
+    color: var(--canvas-dim);
     font-size: 12px;
   }
-  .lsp {
-    background: none;
+  footer button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 4px;
     border: 0;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-    padding: 0;
-  }
-  .branch {
     background: none;
-    border: 0;
     color: inherit;
-    font: inherit;
-    cursor: pointer;
-    padding: 0;
   }
-  .branch:hover {
-    text-decoration: underline;
+  footer button:hover:not(:disabled) {
+    background: none;
+    color: var(--canvas-text);
   }
   .mem {
-    background: none;
-    border: 0;
-    color: inherit;
-    font: inherit;
-    padding: 0;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
-  .mem:disabled {
-    cursor: default;
-  }
-  .mem.unknown {
-    display: none;
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--canvas-dim);
   }
   .mem.up .dot {
-    color: #4ade80;
+    background: var(--success);
   }
   .mem.down .dot {
-    color: #f87171;
+    background: var(--danger);
   }
   .mem.starting .dot {
-    color: #fbbf24;
-  }
-  .path {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    background: var(--warn);
   }
 </style>

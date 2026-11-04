@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import './lib/theme/ideal-dark.css';
+  import { onMount, untrack } from 'svelte';
+  import './lib/theme/base.css';
   import { workspace as ws } from './lib/state/workspace.svelte';
   import { onCommand, dispatch } from './lib/commands';
   import { routeKey } from './lib/keys/router';
   import { isCommandAllowed } from './lib/keys/gate';
   import TopBar from './lib/layout/TopBar.svelte';
-  import ActivityBar from './lib/layout/ActivityBar.svelte';
-  import Sidebar from './lib/layout/Sidebar.svelte';
+  import DockStage from './lib/dock/DockStage.svelte';
   import PluginBanner from './lib/layout/PluginBanner.svelte';
   import StatusBar from './lib/layout/StatusBar.svelte';
-  import BottomPanel from './lib/layout/BottomPanel.svelte';
   import Welcome from './lib/layout/Welcome.svelte';
-  import EditorArea from './lib/editor/EditorArea.svelte';
-  import ClaudeTabs from './lib/claude/ClaudeTabs.svelte';
   import Palette from './lib/palette/Palette.svelte';
   import QuickOpen from './lib/search/QuickOpen.svelte';
   import Toasts from './lib/ui/Toasts.svelte';
@@ -32,6 +28,11 @@
   import { lsp } from './lib/lsp/lsp-manager.svelte';
   import { health } from './lib/hub/health.svelte';
   import { onTerminalActivity, debounce } from './lib/terminal/activity';
+  import { dock } from './lib/dock/dock.svelte';
+  import type { BlockId, Zone } from './lib/dock/dock-tree';
+  import { THEMES, applyTheme } from './lib/theme/themes';
+  import { themeState } from './lib/theme/theme-state.svelte';
+  import { invoke } from '@tauri-apps/api/core';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -44,12 +45,11 @@
     when,
     keys: formatBinding(cmd),
   });
-  const showView = (id: string, label: string, v: NonNullable<typeof ws.sidebarView>): PaletteCommand => ({
-    id,
-    label,
-    run: () => {
-      ws.sidebarView = v;
-    },
+  const showView = (id: string, label: string, b: BlockId): PaletteCommand => ({ id, label, run: () => dock.show(b) });
+  const moveTo = (zone: Zone, label: string): PaletteCommand => ({
+    id: `moveBlock-${zone}`,
+    label: `Sposta blocco attivo ${label}`,
+    run: () => dock.move(dock.focused, 'root', zone),
   });
   const builtins: PaletteCommand[] = [
     bus('toggleMode', 'Passa a Claude / Editor', 'toggleMode'),
@@ -92,11 +92,39 @@
     },
     showView('viewHub', 'Mostra Claude Hub', 'hub'),
     showView('viewNotes', 'Mostra Note', 'notes'),
+    moveTo('left', 'a sinistra'),
+    moveTo('right', 'a destra'),
+    moveTo('top', 'in alto'),
+    moveTo('bottom', 'in basso'),
+    { id: 'resetLayout', label: 'Ripristina disposizione blocchi', run: () => dock.reset() },
+    ...THEMES.map((t) => ({ id: `theme-${t.id}`, label: `Tema: ${t.label}`, run: () => void settings.setTheme(t.id) })),
   ];
 
-  function selectView(v: NonNullable<typeof ws.sidebarView>) {
-    ws.sidebarView = ws.sidebarView === v ? null : v;
-  }
+  $effect(() => {
+    const theme = themeState.theme;
+    applyTheme(theme);
+    // Native title bar takes the canvas colour on Windows 11; older systems ignore it.
+    void invoke('set_window_chrome', { caption: theme.canvas, text: theme.canvasText }).catch(() => {});
+    if (settings.ready && !themeState.preview) {
+      try {
+        localStorage.setItem('ideal.theme', theme.id);
+      } catch {
+        /* storage unavailable */
+      }
+    }
+  });
+
+  // Asked to show Claude or the editor: bring its block forward and give it the keyboard.
+  $effect(() => {
+    void ws.reveal;
+    const m = untrack(() => ws.mode);
+    untrack(() => dock.show(m));
+    dock.focused = m;
+    queueMicrotask(() => {
+      const sel = m === 'claude' ? '.slot:not(.off) textarea' : '.cm-content';
+      document.querySelector<HTMLElement>(`[data-block="${m}"] ${sel}`)?.focus();
+    });
+  });
 
   // Refresh git when the workspace mode toggles (no polling).
   $effect(() => {
@@ -114,10 +142,10 @@
       onTerminalActivity(idleRefresh),
       idleRefresh.cancel,
       onCommand('toggleMode', () => ws.toggleMode()),
-      onCommand('togglePanel', () => ws.togglePanel()),
+      onCommand('togglePanel', () => dock.toggle('terminal')),
       onCommand('searchProject', () => {
         // SearchPanel focuses itself on mount, or via the same command when already shown.
-        ws.sidebarView = 'search';
+        dock.show('search');
       }),
       onCommand('newClaudeTab', () => {
         ws.addClaudeTab('new');
@@ -199,26 +227,12 @@
   <Welcome />
 {:else if settings.ready}
   <div class="shell">
-    <TopBar {name} mode={ws.mode} ontoggle={() => ws.toggleMode()} />
+    <TopBar {name} path={project} />
     <PluginBanner />
     <div class="row">
-      <ActivityBar active={ws.sidebarView} onselect={selectView} />
-      {#if ws.sidebarView}<Sidebar view={ws.sidebarView} projectPath={project} />{/if}
-      <div class="center">
-        <div class="main">
-          <!-- Claude stays mounted in both modes so sessions persist. -->
-          <div class="claude" class:off={ws.mode !== 'claude'}>
-            <ClaudeTabs {ws} cwd={project} visible={ws.mode === 'claude'} />
-          </div>
-          <!-- Editor stays mounted too, so per-tab state survives mode switches. -->
-          <div class="editor" class:off={ws.mode !== 'editor'}>
-            <EditorArea visible={ws.mode === 'editor'} projectRoot={project} />
-          </div>
-        </div>
-        <BottomPanel cwd={project} open={ws.panelOpen} />
-      </div>
+      <DockStage {project} />
     </div>
-    <StatusBar mode={ws.mode} path={project} />
+    <StatusBar mode={ws.mode} />
     <Palette />
     <QuickOpen projectPath={project} />
   </div>
@@ -234,30 +248,8 @@
   .row {
     flex: 1;
     display: flex;
+    gap: var(--gap);
     min-height: 0;
-  }
-  .center {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .main {
-    flex: 1;
-    position: relative;
-    min-height: 0;
-  }
-  .claude {
-    position: absolute;
-    inset: 0;
-  }
-  .claude.off,
-  .editor.off {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .editor {
-    position: absolute;
-    inset: 0;
+    padding: 0 var(--gap);
   }
 </style>

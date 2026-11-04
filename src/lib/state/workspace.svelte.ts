@@ -1,5 +1,4 @@
 export type Mode = 'claude' | 'editor';
-export type SidebarView = 'explorer' | 'git' | 'notes' | 'hub' | 'search';
 export type ClaudeTabKind = 'new' | 'continue' | 'resume';
 
 export interface ClaudeTab {
@@ -12,10 +11,10 @@ export interface ClaudeTab {
 
 export class Workspace {
   mode = $state<Mode>('claude');
+  /** Bumps on every explicit ask to show Claude or the editor, even when the mode is already right. */
+  reveal = $state(0);
   claudeTabs = $state<ClaudeTab[]>([]);
   activeClaudeId = $state<string | null>(null);
-  sidebarView = $state<SidebarView | null>('explorer');
-  panelOpen = $state(true);
 
   #counter = 0;
 
@@ -29,18 +28,17 @@ export class Workspace {
 
   toggleMode(): void {
     this.mode = this.mode === 'claude' ? 'editor' : 'claude';
+    this.reveal += 1;
   }
 
   showClaude(): void {
     this.mode = 'claude';
+    this.reveal += 1;
   }
 
   showEditor(): void {
     this.mode = 'editor';
-  }
-
-  togglePanel(): void {
-    this.panelOpen = !this.panelOpen;
+    this.reveal += 1;
   }
 
   addClaudeTab(kind: ClaudeTabKind = 'new', resumeId?: string): ClaudeTab {

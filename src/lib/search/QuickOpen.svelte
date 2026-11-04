@@ -114,11 +114,11 @@
   }
   .box {
     width: min(560px, 90vw);
-    background: var(--panel-2);
-    border: 1px solid var(--accent-soft);
-    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 6px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-pop);
   }
   input {
     width: 100%;
@@ -128,7 +128,7 @@
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 13px;
     outline: none;
   }
@@ -144,7 +144,7 @@
     border: 0;
     color: var(--text);
     padding: 5px 10px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 12.5px;
     cursor: pointer;
     white-space: nowrap;

@@ -148,15 +148,14 @@
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 12px;
-    outline: none;
   }
   .tg {
     padding: 2px 5px;
     font-size: 11px;
     color: var(--text-dim);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .tg.on {
     color: var(--text);
@@ -168,7 +167,7 @@
     color: var(--text-dim);
   }
   .msg.err {
-    color: var(--danger, #e06c75);
+    color: var(--danger);
   }
   .results {
     overflow-y: auto;
@@ -187,10 +186,10 @@
     color: var(--text-dim);
     font-size: 11px;
   }
-  .row {
+  .row { margin: 0 4px; border-radius: var(--radius-s);
     display: flex;
     gap: 8px;
-    width: 100%;
+    width: calc(100% - 8px);
     text-align: left;
     padding: 2px 12px 2px 20px;
     font-size: 11.5px;
@@ -201,7 +200,7 @@
   }
   .row:hover,
   .row:focus-visible {
-    background: var(--accent-soft);
+    background: var(--panel-2);
     color: var(--text);
   }
   .ln {

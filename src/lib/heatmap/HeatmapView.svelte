@@ -199,22 +199,23 @@
   .days { display: grid; grid-template-rows: repeat(7, 11px); gap: 2px; width: 24px; font-size: 9px; color: var(--text-dim); line-height: 11px; }
   .grid { display: flex; gap: 2px; }
   .col { display: grid; grid-template-rows: repeat(7, 11px); gap: 2px; }
-  .cell { width: 11px; height: 11px; padding: 0; border: 0; border-radius: 2px; background: rgba(107, 79, 216, 0.08); }
+  .cell { width: 11px; height: 11px; padding: 0; border: 0; border-radius: 2px; background: var(--panel-2); }
   .cell.none { background: transparent; }
-  .cell.l1 { background: rgba(107, 79, 216, 0.3); }
-  .cell.l2 { background: rgba(107, 79, 216, 0.5); }
-  .cell.l3 { background: rgba(107, 79, 216, 0.75); }
-  .cell.l4 { background: #6b4fd8; }
+  .cell.l1 { background: color-mix(in srgb, var(--accent) 30%, var(--panel-2)); }
+  .cell.l2 { background: color-mix(in srgb, var(--accent) 50%, var(--panel-2)); }
+  .cell.l3 { background: color-mix(in srgb, var(--accent) 75%, var(--panel-2)); }
+  .cell.l4 { background: var(--accent); }
   button.cell:hover { outline: 1px solid var(--text-dim); }
   button.cell:focus-visible, button.cell.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
   .panels { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 16px; }
   section { flex: 1 1 320px; min-width: 0; }
   ul { list-style: none; margin: 0; padding: 0; }
-  .row { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; padding: 3px 6px; border-radius: 3px; }
-  .row:hover, .row.on { background: var(--accent-soft); }
+  .row { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; padding: 3px 6px; border-radius: var(--radius-s); }
+  .row:hover { background: var(--panel-2); }
+  .row.on { background: var(--accent-soft); }
   .subj { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   code { color: var(--accent); }
-  .add { color: #3fb950; font-size: 12px; }
+  .add { color: var(--success); font-size: 12px; }
   .del { color: var(--danger); font-size: 12px; }
   .st { width: 14px; color: var(--text-dim); }
 </style>

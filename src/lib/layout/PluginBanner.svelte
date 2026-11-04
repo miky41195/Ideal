@@ -1,6 +1,7 @@
 <script lang="ts">
   import { health } from '../hub/health.svelte';
   import { pluginEnable } from '../hub/hub-client';
+  import Icon from '../ui/Icon.svelte';
 
   const PLUGINS = [
     { field: 'claudeMem', name: 'claude-mem', key: 'claude-mem@thedotmack' },
@@ -38,7 +39,7 @@
       <span class="note">Effetto dalla prossima sessione Claude</span>
       {#if error}<span class="err">{error}</span>{/if}
     </div>
-    <button class="x" aria-label="Chiudi" title="Chiudi" onclick={() => (dismissed = true)}>×</button>
+    <button class="x" aria-label="Chiudi" title="Chiudi" onclick={() => (dismissed = true)}><Icon name="close" size={12} /></button>
   </div>
 {/if}
 
@@ -47,9 +48,11 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    margin: 0 var(--gap) var(--gap);
     padding: 4px 10px;
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--border, #333);
+    background: var(--panel);
+    border-radius: var(--radius-s);
+    box-shadow: var(--shadow-block);
     font-size: 12px;
   }
   .items {
@@ -58,21 +61,22 @@
     flex-wrap: wrap;
     gap: 4px 16px;
   }
+  .items button {
+    padding: 0 6px;
+    color: var(--accent);
+    font-weight: 600;
+  }
   .note {
-    opacity: 0.7;
+    color: var(--text-dim);
   }
   .err {
-    color: #f14c4c;
-  }
-  button {
-    font: inherit;
-    cursor: pointer;
+    color: var(--danger);
   }
   .x {
-    background: none;
-    border: 0;
-    color: inherit;
-    font-size: 16px;
-    line-height: 1;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    color: var(--text-dim);
   }
 </style>

@@ -23,7 +23,7 @@
   .doc :global(pre) {
     background: var(--panel-2);
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     overflow-x: auto;
   }
   .doc :global(code) {

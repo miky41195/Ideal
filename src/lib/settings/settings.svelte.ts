@@ -38,8 +38,19 @@ export class SettingsStore {
     }
     this.ready = true;
   }
+
+  /** Applies at once, then persists; the file watcher confirms it for other windows. */
+  async setTheme(id: string): Promise<void> {
+    this.value.theme = id;
+    try {
+      await invoke('set_theme', { theme: id });
+    } catch (e) {
+      showToast(`Tema non salvato: ${e}`);
+    }
+  }
 }
 
 export const settings = new SettingsStore();
+
 
 export const settingsPath = () => invoke<string>('settings_path');

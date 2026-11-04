@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../ui/Icon.svelte';
   import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { git } from './git-store.svelte';
@@ -132,7 +133,7 @@
   {#if git.error}
     <div class="bar err" role="alert">
       <span>{git.error}</span>
-      <button class="icon" title="Chiudi" aria-label="Chiudi errore" onclick={() => (git.error = null)}>×</button>
+      <button class="icon" title="Chiudi" aria-label="Chiudi errore" onclick={() => (git.error = null)}><Icon name="close" size={12} /></button>
     </div>
   {/if}
 
@@ -148,7 +149,7 @@
     <div class="head">
       <div class="branch" bind:this={branchEl}>
         <button class="bbtn" onclick={toggleBranches} title="Cambia branch">
-          {st.branch ?? '(detached)'} ▾
+          {st.branch ?? '(detached)'}<Icon name="chevronDown" size={12} />
         </button>
         {#if branchOpen}
           <div class="drop">
@@ -167,7 +168,7 @@
                 }}
               />
             {:else}
-              <button disabled={!!git.busy} onclick={() => (creating = true)}>+ Nuovo branch…</button>
+              <button disabled={!!git.busy} onclick={() => (creating = true)}>Nuovo branch…</button>
             {/if}
           </div>
         {/if}
@@ -175,10 +176,10 @@
       <div class="remote">
         <button disabled={!!git.busy} onclick={() => remote('fetch', gitFetch)}>Fetch</button>
         <button disabled={!!git.busy} onclick={() => remote('pull', gitPull)}>
-          Pull{st.behind ? ` ↓${st.behind}` : ''}
+          Pull{#if st.behind}<Icon name="down" size={12} />{st.behind}{/if}
         </button>
         <button disabled={!!git.busy} onclick={() => remote('push', gitPush)}>
-          Push{st.ahead ? ` ↑${st.ahead}` : ''}
+          Push{#if st.ahead}<Icon name="up" size={12} />{st.ahead}{/if}
         </button>
         {#if git.busy}<span class="spin" title={git.busy}></span>{/if}
       </div>
@@ -195,9 +196,9 @@
         <div class="sec">
           <span>{s.title} ({s.files.length})</span>
           {#if s.key === 'staged'}
-            <button class="icon" title="Rimuovi tutto dallo stage" aria-label="Rimuovi tutto dallo stage" disabled={!!git.busy} onclick={() => unstage(s.files)}>−</button>
+            <button class="icon" title="Rimuovi tutto dallo stage" aria-label="Rimuovi tutto dallo stage" disabled={!!git.busy} onclick={() => unstage(s.files)}><Icon name="minus" size={13} /></button>
           {:else if s.key !== 'conflict'}
-            <button class="icon" title="Aggiungi tutto allo stage" aria-label="Aggiungi tutto allo stage" disabled={!!git.busy} onclick={() => stage(s.files)}>+</button>
+            <button class="icon" title="Aggiungi tutto allo stage" aria-label="Aggiungi tutto allo stage" disabled={!!git.busy} onclick={() => stage(s.files)}><Icon name="plus" size={13} /></button>
           {/if}
         </div>
         {#each s.files as f (s.key + ':' + f.path)}
@@ -219,12 +220,12 @@
             <span class="dir">{dir(f.path)}</span>
             <span class="acts">
               {#if s.key === 'staged'}
-                <button class="icon" title="Rimuovi dallo stage" aria-label="Rimuovi dallo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void unstage([f]); }}>−</button>
+                <button class="icon" title="Rimuovi dallo stage" aria-label="Rimuovi dallo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void unstage([f]); }}><Icon name="minus" size={13} /></button>
               {:else}
                 {#if s.key !== 'conflict'}
-                  <button class="icon" title="Scarta" aria-label="Scarta modifiche" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void discard(f); }}>↺</button>
+                  <button class="icon" title="Scarta" aria-label="Scarta modifiche" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void discard(f); }}><Icon name="undo" size={13} /></button>
                 {/if}
-                <button class="icon" title="Aggiungi allo stage" aria-label="Aggiungi allo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void stage([f]); }}>+</button>
+                <button class="icon" title="Aggiungi allo stage" aria-label="Aggiungi allo stage" disabled={!!git.busy} onclick={(e) => { e.stopPropagation(); void stage([f]); }}><Icon name="plus" size={13} /></button>
               {/if}
             </span>
           </div>
@@ -240,37 +241,38 @@
 <style>
   .panel { display: flex; flex-direction: column; flex: 1; min-height: 0; font-size: 12px; }
   .msg { color: var(--text-dim); padding: 6px 12px; margin: 0; }
-  .bar { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; margin: 0 8px 6px; border-radius: 5px; }
+  .bar { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; margin: 0 8px 6px; border-radius: var(--radius-s); }
   .err { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); border: 1px solid var(--danger); word-break: break-word; }
   .bar span { flex: 1; }
   .err-inline { color: var(--danger); word-break: break-word; }
   .head { padding: 0 8px 6px; display: flex; flex-direction: column; gap: 6px; }
   .branch { position: relative; }
-  .bbtn { width: 100%; text-align: left; background: var(--panel-2); border-color: var(--border); padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .drop { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 220px; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; display: flex; flex-direction: column; }
+  .bbtn { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; text-align: left; background: var(--panel-2); border-color: var(--border); padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drop { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 220px; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-s); display: flex; flex-direction: column; }
   .drop button { text-align: left; padding: 4px 8px; border-radius: 0; }
-  .drop button:hover { background: var(--accent-soft); }
+  .drop button:hover { background: var(--panel-2); }
   .drop .cur { color: var(--accent); }
-  .drop input { margin: 4px; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+  .drop input { margin: 4px; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-s); font: inherit; }
   .remote { display: flex; gap: 4px; align-items: center; }
-  .remote button { flex: 1; padding: 3px 4px; border-color: var(--border); }
-  .remote button:hover:not(:disabled) { background: var(--accent-soft); }
+  .remote button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 2px; padding: 3px 4px; border-color: var(--border); }
+  .remote button:hover:not(:disabled) { background: var(--panel-2); }
   button:disabled { opacity: 0.45; cursor: default; }
   .spin { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; }
   @keyframes s { to { transform: rotate(360deg); } }
   .commit { padding: 0 8px 6px; display: flex; flex-direction: column; gap: 4px; }
-  textarea { resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px; font: inherit; }
+  textarea { resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 5px 6px; font: inherit; }
   textarea:focus, .drop input:focus { outline: 1px solid var(--accent); }
-  .primary { background: var(--accent); padding: 4px; }
+  .primary { background: var(--accent); color: var(--accent-fg); font-weight: 600; padding: 4px; }
+  .primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
   .list { flex: 1; overflow: auto; }
-  .sec { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 2px 12px; color: var(--text-dim); text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; }
-  .row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 12px; cursor: pointer; }
-  .row:hover { background: var(--accent-soft); }
+  .sec { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 2px 12px; color: var(--text-dim); font-size: 12px; font-weight: 600; }
+  .row { margin: 0 4px; border-radius: var(--radius-s); display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 12px; cursor: pointer; }
+  .row:hover { background: var(--panel-2); }
   .name { white-space: nowrap; }
   .dir { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
   .let { width: 12px; text-align: center; font-weight: 600; }
-  .lM { color: #e0b34f; }
-  .lA, .lR { color: #5fbf7a; }
+  .lM { color: var(--warn); }
+  .lA, .lR { color: var(--success); }
   .lD, .lU { color: var(--danger); }
   .lq { color: var(--text-dim); }
   .acts { display: none; gap: 2px; margin-left: auto; }
