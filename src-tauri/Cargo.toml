@@ -27,7 +27,7 @@ which = "8.0.6"
 trash = "5"
 tempfile = "3.27.0"
 notify = "8"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_Graphics_Dwm"] }
 tauri-plugin-dialog = "2.8.4"
 ignore = "0.4"
 grep-regex = "0.1"

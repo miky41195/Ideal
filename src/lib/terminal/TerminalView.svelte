@@ -11,6 +11,8 @@
   import { settings } from '../settings/settings.svelte';
   import { workspace as ws } from '../state/workspace.svelte';
   import { terminalShouldCapture } from '../keys/gate';
+  import { xtermTheme } from '../theme/themes';
+  import { themeState } from '../theme/theme-state.svelte';
 
   let {
     kind,
@@ -51,6 +53,7 @@
       fontSize: settings.value.terminal.fontSize,
       cursorBlink: true,
       allowProposedApi: true,
+      theme: xtermTheme(themeState.theme),
     });
     const f = new FitAddon();
     t.loadAddon(f);
@@ -134,6 +137,11 @@
       term.options.fontSize = size;
       refit();
     }
+  });
+
+  $effect(() => {
+    const look = xtermTheme(themeState.theme);
+    if (term) term.options.theme = look;
   });
 
   let wasVisible: boolean | undefined;

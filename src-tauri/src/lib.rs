@@ -62,6 +62,8 @@ pub fn run() {
             backups::backup_clear_all,
             settings::get_settings,
             settings::settings_path,
+            settings::set_theme,
+            settings::set_window_chrome,
             settings::get_recent,
             settings::add_recent,
             settings::open_project_window,

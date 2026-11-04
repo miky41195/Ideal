@@ -9,3 +9,5 @@ src-tauri/target/
 .env.*
 !.env.example
 *.timestamp-*
+PRODUCT.md
+DESIGN.md

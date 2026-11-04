@@ -48,30 +48,35 @@
 
 <style>
   main {
-    max-width: 560px;
+    max-width: 520px;
     margin: 0 auto;
-    padding: 64px 24px;
+    padding: 72px 24px;
   }
   h1 {
-    margin: 0 0 24px;
+    margin: 0 0 20px;
+    font-size: 30px;
     font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--canvas-text);
   }
   h2 {
     margin: 32px 0 8px;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--canvas-dim);
   }
   ul {
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 4px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-block);
   }
   li button {
     width: 100%;
     text-align: left;
-    padding: 6px 8px;
+    padding: 7px 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -79,7 +84,12 @@
   .primary {
     padding: 8px 18px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  .primary:hover:not(:disabled) {
+    background: var(--accent);
+    filter: brightness(1.08);
   }
   .err {
     color: var(--danger);

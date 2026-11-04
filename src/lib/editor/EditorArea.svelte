@@ -9,6 +9,7 @@
   import TranscriptView from '../hub/TranscriptView.svelte';
   import CodeEditor from './CodeEditor.svelte';
   import DiskBanner from './DiskBanner.svelte';
+  import Icon from '../ui/Icon.svelte';
 
   let { visible = true, projectRoot = '' }: { visible?: boolean; projectRoot?: string } = $props();
 
@@ -35,16 +36,16 @@
     {#each tabs.tabs as t (t.path)}
       <div class="tab" class:active={t.path === tabs.activePath} role="presentation">
         <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={isFileTab(t) ? t.path : t.name} onclick={() => tabs.select(t.path)}>
-          {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"> ●</span>{/if}
+          {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"></span>{/if}
         </button>
-        <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}>×</button>
+        <button class="x" aria-label={`Chiudi ${t.name}`} onclick={() => close(t.path)}><Icon name="close" size={12} /></button>
       </div>
     {/each}
   </div>
   {#if tabs.errorMessage}
     <div class="err" role="alert">
       <span>{tabs.errorMessage}</span>
-      <button class="x" aria-label="Chiudi messaggio" onclick={() => tabs.dismissError()}>×</button>
+      <button class="x" aria-label="Chiudi messaggio" onclick={() => tabs.dismissError()}><Icon name="close" size={12} /></button>
     </div>
   {/if}
   {#if tabs.active}
@@ -101,37 +102,52 @@
   .strip {
     display: flex;
     align-items: center;
+    gap: 2px;
+    height: 28px;
+    padding: 0 6px;
     background: var(--panel);
-    border-bottom: 1px solid var(--border);
     overflow-x: auto;
     flex: none;
+  }
+  .strip:empty {
+    display: none;
   }
   .tab {
     display: flex;
     align-items: center;
-    border-right: 1px solid var(--border);
+    border-radius: var(--radius-s);
     color: var(--text-dim);
   }
   .tab.active {
-    background: var(--bg);
+    background: var(--panel-2);
     color: var(--text);
-    box-shadow: inset 0 -2px var(--accent);
   }
   .label {
-    padding: 6px 4px 6px 12px;
+    padding: 1px 2px 1px 8px;
     white-space: nowrap;
+  }
+  .label:hover:not(:disabled) {
+    background: none;
   }
   .orph {
     color: var(--danger);
   }
   .dot {
-    color: var(--accent);
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .x {
-    padding: 2px 8px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
     color: var(--text-dim);
   }
-  .x:hover {
+  .x:hover:not(:disabled) {
     color: var(--text);
   }
   .err {

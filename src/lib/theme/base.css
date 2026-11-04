@@ -1,0 +1,128 @@
+/* Fallback before the theme script runs; themes.ts owns the real values. */
+:root {
+  --canvas: #35302a;
+  --canvas-text: #f4f0ea;
+  --canvas-dim: #c9c3b8;
+  --bg: #16171a;
+  --panel: #1b1c20;
+  --panel-2: #272930;
+  --border: #2d2f36;
+  --text: #ececef;
+  --text-dim: #a3a6ae;
+  --accent: #f5a524;
+  --accent-fg: #1c1304;
+  --accent-soft: #f5a5242e;
+  --danger: #f2777a;
+  --success: #7ed492;
+  --warn: #f5c451;
+  --shadow-block: 0 1px 2px #0000004d, 0 4px 14px #00000033;
+  --shadow-pop: 0 12px 40px #00000080;
+
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', Consolas, monospace;
+  --gap: 6px;
+  --radius: 10px;
+  --radius-s: 6px;
+  --head: 32px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+button:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  caret-color: var(--accent);
+}
+input:not([type]),
+input[type='text'],
+input[type='search'],
+textarea {
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.xterm textarea:focus-visible,
+.cm-content:focus-visible {
+  outline: none;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-2) transparent;
+}
+
+.xterm {
+  height: 100%;
+  padding: 6px 0 0 10px;
+}
+.xterm-viewport {
+  background: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -97,23 +97,24 @@
   }
   .box {
     width: min(480px, 90vw);
-    background: var(--panel-2);
-    border: 1px solid var(--accent-soft);
-    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 6px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-pop);
     outline: none;
   }
   input {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 10px;
+    padding: 7px 8px;
     margin-bottom: 4px;
-    background: var(--bg);
+    background: transparent;
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 13px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    font-size: 14px;
     outline: none;
   }
   .list {
@@ -137,8 +138,8 @@
     background: none;
     border: 0;
     color: var(--text);
-    padding: 8px 10px;
-    border-radius: 4px;
+    padding: 4px 8px;
+    border-radius: var(--radius-s);
     font-size: 13px;
     cursor: pointer;
   }

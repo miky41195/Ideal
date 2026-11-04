@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../ui/Icon.svelte';
   import { onMount } from 'svelte';
   import { parseNotes, toggle, addItem, removeItem, editItem, findItemLine, type NoteItem } from './notes-model';
   import { createQueue } from './serial-queue';
@@ -155,8 +156,8 @@
             ondblclick={() => startEdit(it)}
             onkeydown={(e) => e.key === 'F2' && startEdit(it)}>{it.text}</span
           >
-          <button class="ic" title="Invia a Claude" aria-label="Invia a Claude: {it.text}" onclick={() => send(it)}>➤</button>
-          <button class="ic" title="Elimina" aria-label="Elimina: {it.text}" onclick={() => act(it, (m) => removeItem(m, it.line))}>✕</button>
+          <button class="ic" title="Invia a Claude" aria-label="Invia a Claude: {it.text}" onclick={() => send(it)}><Icon name="spark" size={13} /></button>
+          <button class="ic" title="Elimina" aria-label="Elimina: {it.text}" onclick={() => act(it, (m) => removeItem(m, it.line))}><Icon name="close" size={13} /></button>
         {/if}
       </div>
     {:else}
@@ -175,10 +176,10 @@
 <style>
   .notes { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .add { padding: 0 8px 6px; }
-  .add input { width: 100%; box-sizing: border-box; }
+  .add input { width: 100%; box-sizing: border-box; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-s); }
   .scroll { overflow-y: auto; flex: 1; }
-  .row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; }
-  .row:hover, .row:focus-within { background: var(--accent-soft); }
+  .row { margin: 0 4px; border-radius: var(--radius-s); display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; }
+  .row:hover, .row:focus-within { background: var(--panel-2); }
   .row.done .t { text-decoration: line-through; color: var(--text-dim); }
   .t { flex: 1; min-width: 0; overflow-wrap: anywhere; cursor: text; }
   .t:focus-visible { outline: 1px solid var(--accent); }
@@ -186,7 +187,7 @@
   .ic { padding: 0 5px; color: var(--text-dim); }
   .ic:hover, .ic:focus-visible { color: var(--text); }
   .dim { padding: 3px 10px; color: var(--text-dim); font-size: 12px; }
-  .err { color: var(--danger, #e5534b); font-size: 11px; padding: 3px 10px; word-break: break-word; }
+  .err { color: var(--danger); font-size: 11px; padding: 3px 10px; word-break: break-word; }
   .foot { padding: 6px 10px; border-top: 1px solid var(--border); }
   .foot button { font-size: 12px; }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../ui/Icon.svelte';
   import { onMount } from 'svelte';
   import { ask } from '@tauri-apps/plugin-dialog';
   import { listDir, createFile, createDir, renamePath, deletePath } from '../fs-client';
@@ -204,9 +205,9 @@
 <div class="explorer">
   <div class="head" oncontextmenu={(e) => showMenu(e, null)} role="presentation">
     <span class="rootname" title={root}>{root.split(/[\\/]/).filter(Boolean).pop() ?? root}</span>
-    <button title="Nuovo file" aria-label="Nuovo file" onclick={() => startNew('file', root)}>+</button>
-    <button title="Nuova cartella" aria-label="Nuova cartella" onclick={() => startNew('dir', root)}>▤</button>
-    <button title="Aggiorna" aria-label="Aggiorna" onclick={() => refresh(root)}>↻</button>
+    <button title="Nuovo file" aria-label="Nuovo file" onclick={() => startNew('file', root)}><Icon name="filePlus" size={14} /></button>
+    <button title="Nuova cartella" aria-label="Nuova cartella" onclick={() => startNew('dir', root)}><Icon name="folderPlus" size={14} /></button>
+    <button title="Aggiorna" aria-label="Aggiorna" onclick={() => refresh(root)}><Icon name="refresh" size={14} /></button>
   </div>
   {#if status}<div class="err">{status}</div>{/if}
   <div class="tree" role="tree" tabindex="0" onkeydown={onKeydown} oncontextmenu={(e) => showMenu(e, null)}>
@@ -224,7 +225,7 @@
           onkeydown={() => {}}
           oncontextmenu={(e) => showMenu(e, r.node)}
         >
-          <span class="chev">{r.node.isDir ? (r.node.expanded ? '▾' : '▸') : ''}</span>
+          <span class="chev">{#if r.node.isDir}<Icon name={r.node.expanded ? 'chevronDown' : 'chevronRight'} size={12} />{/if}</span>
           <span class="name">{r.node.name}</span>
         </div>
       {:else}
@@ -280,7 +281,7 @@
     overflow: auto;
     outline: none;
   }
-  .row {
+  .row { margin: 0 4px; border-radius: var(--radius-s);
     display: flex;
     align-items: center;
     height: 22px;
@@ -318,7 +319,7 @@
     color: var(--text);
     background: var(--bg);
     border: 1px solid var(--accent);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     padding: 1px 4px;
     outline: none;
   }

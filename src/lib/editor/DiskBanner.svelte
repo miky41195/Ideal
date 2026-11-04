@@ -29,7 +29,7 @@
   button {
     padding: 2px 10px;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--text);
   }
   button:hover {

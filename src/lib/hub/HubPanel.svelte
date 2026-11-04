@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../ui/Icon.svelte';
   import { onMount } from 'svelte';
   import { onTerminalActivity } from '../terminal/activity';
   import { hub } from './hub-store.svelte';
@@ -115,7 +116,7 @@
   <div class="scroll">
     <section>
       <button class="head" aria-expanded={open.sessions} onclick={() => (open.sessions = !open.sessions)}>
-        <span>{open.sessions ? '▾' : '▸'} Sessioni</span><span class="count">{hub.filteredSessions.length}</span>
+        <span class="ttl"><Icon name={open.sessions ? 'chevronDown' : 'chevronRight'} size={12} />Sessioni</span><span class="count">{hub.filteredSessions.length}</span>
       </button>
       {#if open.sessions}
         {#if hub.error.sessions}<div class="err">{hub.error.sessions}</div>{/if}
@@ -131,7 +132,7 @@
 
     <section>
       <button class="head" aria-expanded={open.mem} onclick={() => (open.mem = !open.mem)}>
-        <span>{open.mem ? '▾' : '▸'} Memoria claude-mem</span><span class="count">{hub.observations.length}</span>
+        <span class="ttl"><Icon name={open.mem ? 'chevronDown' : 'chevronRight'} size={12} />Memoria claude-mem</span><span class="count">{hub.observations.length}</span>
       </button>
       {#if open.mem}
         {#if memDown}
@@ -171,7 +172,7 @@
 
     <section>
       <button class="head" aria-expanded={open.memories} onclick={() => (open.memories = !open.memories)}>
-        <span>{open.memories ? '▾' : '▸'} Memorie progetto</span><span class="count">{hub.filteredMemories.length}</span>
+        <span class="ttl"><Icon name={open.memories ? 'chevronDown' : 'chevronRight'} size={12} />Memorie progetto</span><span class="count">{hub.filteredMemories.length}</span>
       </button>
       {#if open.memories}
         {#if hub.error.memories}<div class="err">{hub.error.memories}</div>{/if}
@@ -187,13 +188,13 @@
 
     <section>
       <button class="head" aria-expanded={open.docs} onclick={() => (open.docs = !open.docs)}>
-        <span>{open.docs ? '▾' : '▸'} Documenti</span><span class="count">{docs.length}</span>
+        <span class="ttl"><Icon name={open.docs ? 'chevronDown' : 'chevronRight'} size={12} />Documenti</span><span class="count">{docs.length}</span>
       </button>
       {#if open.docs}
         {#if hub.error.docs}<div class="err">{hub.error.docs}</div>{/if}
         {#each docs as f (f.path)}
           <div class="row" role="button" tabindex="0" title={f.name} onclick={() => openFile(f)} onkeydown={(e) => keyAct(e, () => openFile(f))}>
-            <span class="t">{isState(f) ? '📌 ' : ''}{f.name}</span><span class="d">{relativeDate(f.updated)}</span>
+            <span class="t">{#if isState(f)}<span class="pin"><Icon name="pin" size={12} /></span>{/if}{f.name}</span><span class="d">{relativeDate(f.updated)}</span>
           </div>
         {:else}
           {#if !hub.loading.docs}<div class="dim">Nessun documento</div>{/if}
@@ -208,17 +209,19 @@
   .search { padding: 0 8px 6px; }
   .search input { width: 100%; box-sizing: border-box; }
   .scroll { overflow-y: auto; flex: 1; }
-  .head { display: flex; justify-content: space-between; width: 100%; padding: 4px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+  .head { display: flex; justify-content: space-between; width: 100%; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
   .count { opacity: 0.7; }
-  .row { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 18px; cursor: pointer; font-size: 12px; }
-  .row:hover, .row:focus-visible { background: var(--accent-soft); outline: none; }
+  .row { margin: 0 4px; border-radius: var(--radius-s); display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 18px; cursor: pointer; font-size: 12px; }
+  .row:hover, .row:focus-visible { background: var(--panel-2); outline: none; }
   .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .d { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
-  .badge { font-size: 10px; padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-dim); }
+  .badge { font-size: 10px; padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text-dim); }
   .dim, .sub { padding: 3px 10px 3px 18px; color: var(--text-dim); font-size: 12px; }
-  .sub { font-size: 11px; text-transform: uppercase; padding-top: 8px; }
+  .sub { font-size: 12px; font-weight: 600; padding-top: 8px; }
   .more { margin: 4px 18px; font-size: 12px; }
   .down { padding: 4px 18px; font-size: 12px; color: var(--text-dim); }
   .btns { display: flex; gap: 6px; margin-top: 6px; }
-  .err { color: var(--danger, #e5534b); font-size: 11px; padding: 3px 10px; word-break: break-word; }
+  .ttl { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pin { display: inline-block; vertical-align: -2px; margin-right: 4px; color: var(--accent); }
+  .err { color: var(--danger); font-size: 11px; padding: 3px 10px; word-break: break-word; }
 </style>

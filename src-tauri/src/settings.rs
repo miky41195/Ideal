@@ -267,6 +267,55 @@ pub fn ensure_settings_file(dir: &Path) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Sets `theme` in settings.json; the watcher then tells every window.
+pub fn set_theme_impl(dir: &Path, theme: &str) -> Result<(), String> {
+    let path = ensure_settings_file(dir)?;
+    let text = std::fs::read_to_string(&path).map_err(err)?;
+    let mut json: Value = serde_json::from_str(&text).map_err(|e| format!("settings.json non valido: {e}"))?;
+    let Some(obj) = json.as_object_mut() else {
+        return Err("settings.json non valido: non è un oggetto".into());
+    };
+    obj.insert("theme".into(), Value::String(theme.into()));
+    let out = serde_json::to_string_pretty(&json).map_err(err)?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, out).map_err(err)?;
+    std::fs::rename(&tmp, &path).map_err(err)
+}
+
+#[tauri::command(async)]
+pub fn set_theme(theme: String) -> Result<(), String> {
+    set_theme_impl(&config_dir(), &theme)
+}
+
+/// `#rrggbb` to the 0x00BBGGRR value DWM wants.
+fn colorref(hex: &str) -> Option<u32> {
+    let h = hex.strip_prefix('#').filter(|h| h.len() == 6)?;
+    let v = u32::from_str_radix(h, 16).ok()?;
+    Some(((v & 0xff) << 16) | (v & 0xff00) | (v >> 16))
+}
+
+/// Tints the native title bar. Windows 11 only: older systems reject the attribute, which is fine.
+#[tauri::command]
+pub fn set_window_chrome(window: tauri::WebviewWindow, caption: String, text: String) -> Result<(), String> {
+    let (Some(caption), Some(text)) = (colorref(&caption), colorref(&text)) else {
+        return Err("colore non valido".into());
+    };
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR};
+        let hwnd = window.hwnd().map_err(err)?.0 as windows_sys::Win32::Foundation::HWND;
+        for (attr, value) in [(DWMWA_CAPTION_COLOR, caption), (DWMWA_TEXT_COLOR, text)] {
+            // SAFETY: hwnd is this live window; the pointer and size describe a local u32.
+            unsafe {
+                DwmSetWindowAttribute(hwnd, attr as u32, (&raw const value).cast(), size_of::<u32>() as u32);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (window, caption, text);
+    Ok(())
+}
+
 #[tauri::command(async)]
 pub fn settings_path() -> Result<String, String> {
     ensure_settings_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
@@ -303,6 +352,7 @@ pub fn open_project_window(app: AppHandle, path: String) -> Result<(), String> {
     match WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(project_url(&path).into()))
         .title("Ideal")
         .inner_size(1280.0, 800.0)
+        .min_inner_size(760.0, 480.0)
         .build()
     {
         Ok(_) => Ok(()),
@@ -428,6 +478,33 @@ mod tests {
         assert_eq!(load_state(d.path()), AppState::default());
         assert_eq!(fs::read_to_string(d.path().join("state.json.bad")).unwrap(), "{ broken");
         assert!(!d.path().join("state.json").exists());
+    }
+
+    #[test]
+    fn colorref_swaps_red_and_blue() {
+        assert_eq!(colorref("#112233"), Some(0x0033_2211));
+        assert_eq!(colorref("112233"), None);
+        assert_eq!(colorref("#12"), None);
+    }
+
+    #[test]
+    fn set_theme_keeps_other_keys() {
+        let d = tmp();
+        std::fs::write(d.path().join("settings.json"), r#"{"editor":{"fontSize":20},"lsp":{"rust":false}}"#).unwrap();
+        set_theme_impl(d.path(), "bosco").unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(d.path().join("settings.json")).unwrap()).unwrap();
+        assert_eq!(v["theme"], "bosco");
+        assert_eq!(v["editor"]["fontSize"], 20);
+        assert_eq!(v["lsp"]["rust"], false);
+    }
+
+    #[test]
+    fn set_theme_refuses_invalid_json_without_touching_it() {
+        let d = tmp();
+        let p = d.path().join("settings.json");
+        std::fs::write(&p, "{ rotto").unwrap();
+        assert!(set_theme_impl(d.path(), "bosco").is_err());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "{ rotto");
     }
 
     #[test]

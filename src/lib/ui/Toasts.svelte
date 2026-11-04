@@ -26,6 +26,6 @@
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 12px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-pop);
   }
 </style>

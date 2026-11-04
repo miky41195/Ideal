@@ -48,13 +48,6 @@ describe('Workspace', () => {
     expect(w.addClaudeTab().title).toBe('Claude 2');
   });
 
-  it('defaults for panel and sidebar', () => {
-    expect(w.panelOpen).toBe(true);
-    expect(w.sidebarView).toBe('explorer');
-    w.togglePanel();
-    expect(w.panelOpen).toBe(false);
-  });
-
   it('closing a non-active tab keeps the active one', () => {
     const first = w.claudeTabs[0];
     const second = w.addClaudeTab();

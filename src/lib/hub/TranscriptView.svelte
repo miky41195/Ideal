@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '../ui/Icon.svelte';
   import { untrack } from 'svelte';
   import { sessionRead, type TranscriptEntry } from './hub-client';
   import { TranscriptPager } from './transcript-pager';
@@ -51,7 +52,7 @@
   <div class="list">
     {#each entries as e, i (i)}
       {#if e.kind === 'tool'}
-        <div class="tool">⚙ {e.tool ?? 'tool'}</div>
+        <div class="tool"><Icon name="gear" size={12} />{e.tool ?? 'tool'}</div>
       {:else}
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="bubble {e.kind === 'user' ? 'user' : 'assistant'}" {onclick} onsubmit={(e) => e.preventDefault()}>{@html renderMarkdown(e.text)}</div>
@@ -110,6 +111,9 @@
     overflow-x: auto;
   }
   .tool {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     color: var(--text-dim);
     font-size: 0.9em;
   }
