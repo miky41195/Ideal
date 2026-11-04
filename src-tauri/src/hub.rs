@@ -458,6 +458,41 @@ pub fn session_usage_impl(claude_projects: &Path, project_path: &str, id: Option
     last_usage(&session_path(claude_projects, project_path, id)?)
 }
 
+/// Link of the session while Remote Control is on: Claude records every change, with a null url on disconnect.
+pub fn session_remote_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<String> {
+    let path = session_path(claude_projects, project_path, id)?;
+    let file = std::fs::File::open(path).ok()?;
+    let mut url = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if !line.contains("\"remote_session_change\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if v.pointer("/attachment/type").and_then(Value::as_str) == Some("remote_session_change") {
+            url = v.pointer("/attachment/url").and_then(Value::as_str).map(String::from);
+        }
+    }
+    url
+}
+
+fn at_startup_in(settings: &str) -> bool {
+    serde_json::from_str::<Value>(settings)
+        .ok()
+        .and_then(|v| v.get("remoteControlAtStartup").and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+/// Whether Claude connects new sessions to Remote Control by itself.
+#[tauri::command(async)]
+pub fn remote_at_startup() -> bool {
+    std::env::var_os("USERPROFILE")
+        .map(|h| PathBuf::from(h).join(".claude").join("settings.json"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .is_some_and(|s| at_startup_in(&s))
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SessionFile {
     pub path: String,
@@ -524,6 +559,11 @@ pub fn sessions_list(
 #[tauri::command(async)]
 pub fn session_files(project_path: String, id: Option<String>) -> Result<Vec<SessionFile>, String> {
     Ok(session_files_impl(&claude_projects_dir()?, &project_path, id.as_deref()))
+}
+
+#[tauri::command(async)]
+pub fn session_remote(project_path: String, id: Option<String>) -> Result<Option<String>, String> {
+    Ok(session_remote_impl(&claude_projects_dir()?, &project_path, id.as_deref()))
 }
 
 #[tauri::command(async)]
@@ -597,6 +637,30 @@ mod tests {
             SessionFile { path: "b.ts".into(), edits: 1 },
         ]);
         assert!(session_files_impl(&projects, "C:/q", Some("manca")).is_empty());
+        drop(d);
+    }
+
+    #[test]
+    fn at_startup_reads_the_setting() {
+        assert!(at_startup_in(r#"{"remoteControlAtStartup": true}"#));
+        assert!(!at_startup_in(r#"{"remoteControlAtStartup": false}"#));
+        assert!(!at_startup_in("{}"));
+        assert!(!at_startup_in("non json"));
+    }
+
+    #[test]
+    fn session_remote_follows_the_last_change() {
+        let (d, projects) = setup();
+        let dir = projects.join(project_slug("C:/r"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let on = r#"{"attachment":{"type":"remote_session_change","url":"https://x/s1"}}"#;
+        let off = r#"{"attachment":{"type":"remote_session_change","url":null}}"#;
+        std::fs::write(dir.join("on-1.jsonl"), [off, on].join("\n")).unwrap();
+        std::fs::write(dir.join("off-1.jsonl"), [on, off].join("\n")).unwrap();
+        std::fs::write(dir.join("mai-1.jsonl"), "non json remote_session_change\n").unwrap();
+        assert_eq!(session_remote_impl(&projects, "C:/r", Some("on-1")).as_deref(), Some("https://x/s1"));
+        assert_eq!(session_remote_impl(&projects, "C:/r", Some("off-1")), None);
+        assert_eq!(session_remote_impl(&projects, "C:/r", Some("mai-1")), None);
         drop(d);
     }
 

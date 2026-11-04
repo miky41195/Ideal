@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateTokens, extractDraft, formatTokens } from './tokens';
+import { estimateTokens, extractDraft, formatTokens, remoteFromScreen, remoteState } from './tokens';
 
 const rule = '─'.repeat(40);
 const row = (text: string, dim = false) => ({ text, dim });
@@ -22,6 +22,22 @@ describe('formatTokens', () => {
     expect(formatTokens(1500)).toBe('1,5k');
     expect(formatTokens(84_300)).toBe('84k');
     expect(formatTokens(1_250_000)).toBe('1,3M');
+  });
+});
+
+describe('remote link', () => {
+  it('reads the panel, and knows nothing without it', () => {
+    expect(remoteFromScreen([row('This session is available in the Claude mobile app and at https://x.')])).toBe(true);
+    expect(remoteFromScreen([row('> 1. Enable Remote Control  Opens a secure connection')])).toBe(false);
+    expect(remoteFromScreen([row('altro testo')])).toBeNull();
+  });
+
+  it('trusts the panel over everything, then the transcript, then the setting', () => {
+    expect(remoteState(false, true, true)).toBe(false);
+    expect(remoteState(true, false, false)).toBe(true);
+    expect(remoteState(null, true, false)).toBe(true);
+    expect(remoteState(null, false, true)).toBe(true);
+    expect(remoteState(null, false, false)).toBe(false);
   });
 });
 

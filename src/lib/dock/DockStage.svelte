@@ -15,7 +15,7 @@
   import { BLOCK_META } from './meta';
   import { claudeUsage } from '../claude/usage.svelte';
   import { contextLevel, formatTokens } from '../claude/tokens';
-  import { sendToActiveClaude } from '../claude/send-bridge';
+  import { runInActiveClaude, sendToActiveClaude } from '../claude/send-bridge';
   import { settings } from '../settings/settings.svelte';
   import { showToast } from '../ui/toast.svelte';
   import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
@@ -81,6 +81,12 @@
 
   const level = $derived(contextLevel(claudeUsage.context, settings.value.claude.contextWarn));
   const runCompact = () => void sendToActiveClaude('/compact').catch((e) => showToast(String(e)));
+
+  // Same command both ways: it connects, and once connected it opens the panel with link and QR code.
+  function connectPhone() {
+    if (claudeUsage.draft > 0) return showToast('Svuota la casella di Claude, poi riprova');
+    void runInActiveClaude('/remote-control').catch((e) => showToast(String(e)));
+  }
 
   function usageHint(context: number | null, draft: number): string {
     const n = (v: number) => v.toLocaleString('it-IT');
@@ -242,6 +248,14 @@
               <button class="act text" title="Scrive /compact nella casella di Claude: premi Invio per confermare" onclick={runCompact}>Compatta</button>
             {/if}
           {/if}
+          <button
+            class="act"
+            class:live={claudeUsage.remote}
+            title={claudeUsage.remote ? 'Sessione raggiungibile da telefono: clic per link e QR code' : 'Collega questa sessione al telefono'}
+            aria-label={claudeUsage.remote ? 'Sessione collegata al telefono' : 'Collega al telefono'}
+            aria-pressed={claudeUsage.remote}
+            onclick={connectPhone}
+          ><Icon name="phone" size={14} /></button>
           <button class="act text" title="costa più token; claude-mem dà già il contesto" onclick={() => ws.addClaudeTab('continue')}>Riprendi ultima</button>
           <button class="act" title="Nuova sessione (Ctrl+Maiusc+T)" aria-label="Nuova sessione" onclick={() => ws.addClaudeTab('new')}><Icon name="plus" size={14} /></button>
         {:else if group.active === 'terminal'}
@@ -405,6 +419,10 @@
     width: 24px;
     height: 24px;
     color: var(--text-dim);
+  }
+  .act.live {
+    color: var(--accent);
+    background: var(--accent-soft);
   }
   .act.text {
     width: auto;

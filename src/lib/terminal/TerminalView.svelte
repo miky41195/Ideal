@@ -34,7 +34,7 @@
     onerror?: (msg: string) => void;
     onspawn?: (ptyId: number) => void;
     /** Called with the text in Claude's input box after the screen settles. */
-    ondraft?: (text: string) => void;
+    ondraft?: (text: string, rows: ScreenRow[]) => void;
     /** Enter pressed alone; pasted text with line breaks does not count. */
     onsubmit?: () => void;
     /** The visible text changed. Raw output is no signal: Claude keeps repainting the same screen while idle. */
@@ -147,7 +147,9 @@
     ro.observe(host);
 
     const scanDraft = debounce(() => {
-      if (ondraft && !destroyed) ondraft(extractDraft(screenRows(t)));
+      if (!ondraft || destroyed) return;
+      const rows = screenRows(t);
+      ondraft(extractDraft(rows), rows);
     }, 200);
     let lastScreen = '';
     let screenTimer: ReturnType<typeof setTimeout> | undefined;

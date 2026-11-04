@@ -82,6 +82,8 @@ pub fn run() {
             hub::session_read,
             hub::session_usage,
             hub::session_files,
+            hub::session_remote,
+            hub::remote_at_startup,
             hub::memories_list,
             hub::docs_list,
             fs_watch::fs_watch,
