@@ -29,6 +29,22 @@ export interface ScreenRow {
   dim: boolean;
 }
 
+/** What Claude's own Remote Control panel says, when it is on screen. */
+export function remoteFromScreen(rows: ScreenRow[]): boolean | null {
+  const text = rows.map((r) => r.text).join('\n');
+  if (text.includes('Enable Remote Control')) return false;
+  if (text.includes('This session is available in the Claude mobile app')) return true;
+  return null;
+}
+
+/**
+ * Best knowledge of the link, surest first: the panel, then the transcript, then the startup setting.
+ * A new session has no transcript until its first message, so the setting has to cover that gap.
+ */
+export function remoteState(screen: boolean | null, hasLink: boolean, atStartup: boolean): boolean {
+  return screen ?? (hasLink || atStartup);
+}
+
 const isRule = (s: string) => (s.match(/─/g)?.length ?? 0) >= 20;
 
 /** Finds what is typed in Claude's input box on screen: the rows between its two horizontal rules. */

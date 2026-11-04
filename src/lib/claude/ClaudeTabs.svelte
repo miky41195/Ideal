@@ -7,7 +7,7 @@
   import type { ClaudeTab, Workspace } from '../state/workspace.svelte';
   import Icon from '../ui/Icon.svelte';
   import { claudeUsage } from './usage.svelte';
-  import { estimateTokens } from './tokens';
+  import { estimateTokens, remoteFromScreen } from './tokens';
   import { debounce, onTerminalActivity } from '../terminal/activity';
   import { AttentionTracker } from './attention';
   import { callBack } from './notify';
@@ -93,15 +93,21 @@
     void ws.activeClaudeId;
     claudeUsage.context = null;
     claudeUsage.draft = 0;
+    claudeUsage.tab = ws.activeClaudeId;
     readUsage();
   });
 
   // Types text into the active Claude (no Enter), creating a tab first if there is none.
   onMount(() =>
-    setClaudeSender(async (text) => {
+    setClaudeSender(async (text, submit) => {
       const tab = ws.activeClaudeTab ?? ws.addClaudeTab('new');
       ws.showClaude();
-      await writePty(await ptyFor(tab.id), text);
+      const id = await ptyFor(tab.id);
+      await writePty(id, text);
+      if (!submit) return;
+      // Sent apart: text and Enter in one write would arrive as a paste, and Enter would not submit.
+      await new Promise((r) => setTimeout(r, 150));
+      await writePty(id, '\r');
     }),
   );
 
@@ -146,7 +152,13 @@
             onspawn={(pid) => spawned(t.id, pid)}
             onsubmit={() => tracker(t.id).onSubmit(Date.now())}
             onscreen={() => tracker(t.id).onOutput(Date.now())}
-            ondraft={shown ? (text) => (claudeUsage.draft = estimateTokens(text)) : undefined}
+            ondraft={shown
+              ? (text, rows) => {
+                  claudeUsage.draft = estimateTokens(text);
+                  const said = remoteFromScreen(rows);
+                  if (said !== null) claudeUsage.screens[t.id] = said;
+                }
+              : undefined}
             onexit={() => {
               ptys.delete(t.id);
               failWaiters(t.id, 'Sessione Claude terminata');
