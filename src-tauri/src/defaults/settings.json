@@ -3,5 +3,6 @@
   "editor": { "fontSize": 14, "tabSize": 2, "fontFamily": "Cascadia Code, Consolas, monospace" },
   "theme": "ideal-dark",
   "claudeMem": { "port": 37777 },
+  "claude": { "notify": true, "contextWarn": 200000 },
   "layout": { "sidebarWidth": 260, "panelHeight": 220 }
 }

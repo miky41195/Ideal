@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import TerminalView from '../terminal/TerminalView.svelte';
   import { writePty } from '../terminal/pty-client';
   import { setClaudeSender } from './send-bridge';
@@ -9,6 +9,9 @@
   import { claudeUsage } from './usage.svelte';
   import { estimateTokens } from './tokens';
   import { debounce, onTerminalActivity } from '../terminal/activity';
+  import { AttentionTracker } from './attention';
+  import { callBack } from './notify';
+  import { settings } from '../settings/settings.svelte';
 
   let { ws, cwd, visible }: { ws: Workspace; cwd: string; visible: boolean } = $props();
 
@@ -43,6 +46,37 @@
     return new Promise((ok, fail) => waiters.set(tabId, [...(waiters.get(tabId) ?? []), { ok, fail }]));
   }
 
+  // One tracker per tab; a tab being looked at needs no call back.
+  const trackers = new Map<string, AttentionTracker>();
+  const tracker = (id: string) => trackers.get(id) ?? trackers.set(id, new AttentionTracker()).get(id)!;
+  const beingWatched = (id: string) => visible && id === ws.activeClaudeId && document.hasFocus();
+
+  function checkAttention() {
+    const now = Date.now();
+    for (const t of ws.claudeTabs) {
+      if (!tracker(t.id).tick(now) || beingWatched(t.id)) continue;
+      t.attention = true;
+      if (settings.value.claude.notify) void callBack('Claude ti aspetta', `${t.title} ha finito o chiede una risposta`);
+    }
+  }
+
+  onMount(() => {
+    const timer = setInterval(checkAttention, 1000);
+    const seen = () => {
+      if (visible) ws.clearAttention(ws.activeClaudeId);
+    };
+    window.addEventListener('focus', seen);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', seen);
+    };
+  });
+  // Reacts to looking at a tab only: tracking `attention` here would clear every mark the moment it is set.
+  $effect(() => {
+    const id = ws.activeClaudeId;
+    if (visible) untrack(() => ws.clearAttention(id));
+  });
+
   // Real context size comes from the transcript once output settles; nothing runs while hidden.
   const readUsage = () => {
     if (visible) void claudeUsage.refresh(cwd, ws.activeClaudeTab?.sessionId ?? null);
@@ -73,6 +107,7 @@
 
   function close(id: string) {
     ptys.delete(id);
+    trackers.delete(id);
     failWaiters(id, 'Sessione Claude chiusa');
     delete status[id];
     ws.closeClaudeTab(id);
@@ -91,7 +126,7 @@
   <div class="strip">
     {#each ws.claudeTabs as t (t.id)}
       <div class="tab" class:on={t.id === ws.activeClaudeId}>
-        <button class="label" onclick={() => ws.selectClaudeTab(t.id)}>{t.title}</button>
+        <button class="label" onclick={() => ws.selectClaudeTab(t.id)}>{t.title}{#if t.attention}<span class="dot" aria-label="ti aspetta"></span>{/if}</button>
         <button class="x" title="Chiudi" aria-label="Chiudi {t.title}" onclick={() => close(t.id)}><Icon name="close" size={12} /></button>
       </div>
     {/each}
@@ -109,6 +144,8 @@
             {cwd}
             visible={shown}
             onspawn={(pid) => spawned(t.id, pid)}
+            onsubmit={() => tracker(t.id).onSubmit(Date.now())}
+            onscreen={() => tracker(t.id).onOutput(Date.now())}
             ondraft={shown ? (text) => (claudeUsage.draft = estimateTokens(text)) : undefined}
             onexit={() => {
               ptys.delete(t.id);
@@ -173,6 +210,14 @@
   }
   .label:hover:not(:disabled) {
     background: none;
+  }
+  .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .x {
     display: grid;

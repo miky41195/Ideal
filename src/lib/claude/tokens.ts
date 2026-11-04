@@ -15,6 +15,14 @@ export function formatTokens(n: number): string {
   return `${it1(n / 1_000_000)}M`;
 }
 
+export type ContextLevel = 'ok' | 'warn' | 'high';
+
+/** `warn` is the owner's threshold; twice that is high. Zero turns the warning off. */
+export function contextLevel(tokens: number | null, warn: number): ContextLevel {
+  if (tokens === null || warn <= 0 || tokens < warn) return 'ok';
+  return tokens >= warn * 2 ? 'high' : 'warn';
+}
+
 export interface ScreenRow {
   text: string;
   /** The row's first character is drawn dim, as Claude draws its placeholder. */

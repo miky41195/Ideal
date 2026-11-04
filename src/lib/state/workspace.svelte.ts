@@ -9,6 +9,8 @@ export interface ClaudeTab {
   resumeId?: string;
   /** Transcript id, known up front for new sessions and resumes; `continue` picks the newest. */
   sessionId?: string;
+  /** Claude finished or is waiting, and nobody has looked yet. */
+  attention?: boolean;
 }
 
 export class Workspace {
@@ -60,6 +62,16 @@ export class Workspace {
 
   selectClaudeTab(id: string): void {
     if (this.claudeTabs.some((t) => t.id === id)) this.activeClaudeId = id;
+    this.clearAttention(id);
+  }
+
+  clearAttention(id: string | null): void {
+    const t = this.claudeTabs.find((x) => x.id === id);
+    if (t?.attention) t.attention = false;
+  }
+
+  get needsAttention(): boolean {
+    return this.claudeTabs.some((t) => t.attention);
   }
 
   closeClaudeTab(id: string): void {

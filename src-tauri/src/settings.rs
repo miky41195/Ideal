@@ -55,6 +55,18 @@ impl Default for ClaudeMemSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
+pub struct ClaudeSettings {
+    pub notify: bool,
+    pub context_warn: u32,
+}
+impl Default for ClaudeSettings {
+    fn default() -> Self {
+        Self { notify: true, context_warn: 200_000 }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
 pub struct LayoutSettings {
     pub sidebar_width: u16,
     pub panel_height: u16,
@@ -72,6 +84,7 @@ pub struct Settings {
     pub editor: EditorSettings,
     pub theme: String,
     pub claude_mem: ClaudeMemSettings,
+    pub claude: ClaudeSettings,
     pub layout: LayoutSettings,
 }
 impl Default for Settings {
@@ -81,6 +94,7 @@ impl Default for Settings {
             editor: Default::default(),
             theme: "ideal-dark".into(),
             claude_mem: Default::default(),
+            claude: Default::default(),
             layout: Default::default(),
         }
     }
