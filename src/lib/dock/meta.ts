@@ -7,6 +7,7 @@ export const BLOCK_META: Record<BlockId, { label: string; icon: IconName }> = {
   terminal: { label: 'Terminale', icon: 'terminal' },
   explorer: { label: 'File', icon: 'files' },
   git: { label: 'Git', icon: 'branch' },
+  changes: { label: 'Modifiche', icon: 'diff' },
   search: { label: 'Cerca', icon: 'search' },
   notes: { label: 'Note', icon: 'note' },
   hub: { label: 'Hub', icon: 'layers' },

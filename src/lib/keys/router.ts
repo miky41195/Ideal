@@ -11,6 +11,10 @@ export type Command =
   | 'saveAll'
   | 'closeTab';
 
+export const ALL_COMMANDS: Command[] = [
+  'toggleMode', 'palette', 'quickOpen', 'quickOpenAny', 'searchProject', 'togglePanel', 'newClaudeTab', 'save', 'saveAll', 'closeTab',
+];
+
 export interface KeyEvent {
   code: string; // physical key (KeyboardEvent.code)
   ctrl: boolean;
@@ -42,10 +46,19 @@ export const DEFAULT_BINDINGS: Binding[] = [
   { code: 'KeyW', ctrl: true, shift: false, focus: EDITOR, command: 'closeTab' },
 ];
 
+let active: Binding[] = DEFAULT_BINDINGS;
+
+/** Replaces the live shortcuts, from keybindings.json. */
+export function setBindings(bindings: Binding[]): void {
+  active = bindings;
+}
+
+export const currentBindings = (): Binding[] => active;
+
 export function routeKey(
   ev: KeyEvent,
   focus: Focus,
-  bindings: Binding[] = DEFAULT_BINDINGS,
+  bindings: Binding[] = active,
 ): Command | null {
   if (ev.alt) return null;
   for (const b of bindings) {

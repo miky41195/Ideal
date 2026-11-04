@@ -1,6 +1,7 @@
 <script lang="ts">
   import { dock } from '../dock/dock.svelte';
-  import { ALL_BLOCKS, type BlockId } from '../dock/dock-tree';
+  import { ALL_BLOCKS, PRESETS, type BlockId } from '../dock/dock-tree';
+  import { registerCommands } from '../palette/registry';
   import { BLOCK_META } from '../dock/meta';
   import Icon from '../ui/Icon.svelte';
 
@@ -16,6 +17,32 @@
     dock.reset();
     open = false;
   }
+  function preset(id: string) {
+    dock.applyPreset(id);
+    open = false;
+  }
+  function load(name: string) {
+    dock.applySaved(name);
+    open = false;
+  }
+
+  let naming = $state(false);
+  let name = $state('');
+  function save(e: SubmitEvent) {
+    e.preventDefault();
+    dock.saveLayout(name);
+    name = '';
+    naming = false;
+    open = false;
+  }
+
+  // Saved arrangements are reachable from the palette too.
+  $effect(() =>
+    registerCommands([
+      ...PRESETS.map((p) => ({ id: `layout-${p.id}`, label: `Disposizione: ${p.label}`, run: () => dock.applyPreset(p.id) })),
+      ...dock.saved.map((l) => ({ id: `layout-saved-${l.name}`, label: `Disposizione: ${l.name}`, run: () => dock.applySaved(l.name) })),
+    ]),
+  );
   function outside(e: PointerEvent) {
     if (open && !root.contains(e.target as Node)) open = false;
   }
@@ -40,6 +67,33 @@
           {#if dock.visible(b)}<Icon name="check" size={14} />{/if}
         </button>
       {/each}
+      <hr />
+      {#each PRESETS as p (p.id)}
+        <button role="menuitem" onclick={() => preset(p.id)}>
+          <Icon name="blocks" size={14} />
+          <span class="name">{p.label}</span>
+        </button>
+      {/each}
+      {#each dock.saved as l (l.name)}
+        <div class="saved">
+          <button role="menuitem" onclick={() => load(l.name)}>
+            <Icon name="pin" size={14} />
+            <span class="name">{l.name}</span>
+          </button>
+          <button class="del" title="Elimina {l.name}" aria-label="Elimina {l.name}" onclick={() => dock.deleteSaved(l.name)}><Icon name="close" size={12} /></button>
+        </div>
+      {/each}
+      {#if naming}
+        <form onsubmit={save}>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" autofocus placeholder="Nome disposizione" aria-label="Nome disposizione" bind:value={name} />
+        </form>
+      {:else}
+        <button role="menuitem" onclick={() => (naming = true)}>
+          <Icon name="plus" size={14} />
+          <span class="name">Salva disposizione attuale</span>
+        </button>
+      {/if}
       <hr />
       <button role="menuitem" onclick={reset}>
         <Icon name="undo" size={14} />
@@ -91,6 +145,27 @@
   }
   .name {
     flex: 1;
+  }
+  .saved {
+    display: flex;
+    align-items: center;
+  }
+  .saved > button:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .menu .del {
+    flex: none;
+    width: 24px;
+    padding: 0;
+    justify-content: center;
+    color: var(--text-dim);
+  }
+  form {
+    padding: 2px;
+  }
+  form input {
+    width: 100%;
   }
   hr {
     width: 100%;

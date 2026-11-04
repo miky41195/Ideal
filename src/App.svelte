@@ -31,6 +31,9 @@
   import { dock } from './lib/dock/dock.svelte';
   import type { BlockId, Zone } from './lib/dock/dock-tree';
   import { THEMES, applyTheme } from './lib/theme/themes';
+  import { parseKeybindings } from './lib/keys/user-bindings';
+  import { setBindings } from './lib/keys/router';
+  import { listen } from '@tauri-apps/api/event';
   import { themeState } from './lib/theme/theme-state.svelte';
   import { invoke } from '@tauri-apps/api/core';
 
@@ -80,6 +83,19 @@
         }
       },
     },
+    {
+      id: 'openKeybindings',
+      label: 'Apri keybindings.json',
+      run: async () => {
+        try {
+          await tabs.openFile(await invoke<string>('keybindings_path'));
+          ws.showEditor();
+        } catch (e) {
+          showToast(`Impossibile aprire keybindings.json: ${e}`);
+        }
+      },
+    },
+    showView('viewChanges', 'Mostra Modifiche della sessione', 'changes'),
     showView('viewExplorer', 'Mostra Esplora file', 'explorer'),
     showView('viewGit', 'Mostra Git', 'git'),
     {
@@ -99,6 +115,16 @@
     { id: 'resetLayout', label: 'Ripristina disposizione blocchi', run: () => dock.reset() },
     ...THEMES.map((t) => ({ id: `theme-${t.id}`, label: `Tema: ${t.label}`, run: () => void settings.setTheme(t.id) })),
   ];
+
+  async function loadKeybindings() {
+    try {
+      const { bindings, errors } = parseKeybindings(await invoke<string | null>('get_keybindings'));
+      setBindings(bindings);
+      if (errors.length) showToast(errors.join(' · '));
+    } catch (e) {
+      console.warn('keybindings load failed', e);
+    }
+  }
 
   $effect(() => {
     const theme = themeState.theme;
@@ -134,6 +160,8 @@
 
   onMount(() => {
     void settings.init();
+    void loadKeybindings();
+    const offKeys = listen('keybindings://changed', () => void loadKeybindings());
     // Claude/shell edits files without going through the editor: refresh once output goes idle.
     const idleRefresh = debounce(() => void git.refresh(), 1500);
     const offs = [
@@ -213,6 +241,7 @@
     }
     return () => {
       disposed = true;
+      void offKeys.then((f) => f());
       void lsp.stopAll();
       offGit?.();
       offFs?.();

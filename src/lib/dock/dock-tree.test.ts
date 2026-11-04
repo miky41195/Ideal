@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_BLOCKS,
+  PRESETS,
   activate,
   allGroups,
   defaultLayout,
@@ -207,6 +208,26 @@ describe('resizeAt', () => {
     const r = resizeAt(row, [], 0, 0.9, 0.1) as Extract<DockNode, { type: 'split' }>;
     expect(r.sizes[1]).toBeCloseTo(0.1);
     expect(r.sizes[0]).toBeCloseTo(0.9);
+  });
+});
+
+describe('PRESETS', () => {
+  it.each(PRESETS.map((p) => [p.id, p] as const))('%s holds every block once and survives normalize', (_id, p) => {
+    const t = p.build();
+    expect(blockCount(t).sort()).toEqual([...ALL_BLOCKS].sort());
+    expect(blockCount(normalize(JSON.parse(JSON.stringify(t)))).sort()).toEqual([...ALL_BLOCKS].sort());
+  });
+
+  it('focus leaves only Claude and the editor on screen', () => {
+    const t = PRESETS.find((p) => p.id === 'focus')!.build();
+    expect(isVisible(t, 'claude')).toBe(true);
+    expect(isVisible(t, 'explorer')).toBe(false);
+    expect(isVisible(t, 'terminal')).toBe(false);
+  });
+
+  it('review puts changes, editor and Claude side by side', () => {
+    const t = PRESETS.find((p) => p.id === 'review')!.build();
+    for (const b of ['changes', 'editor', 'claude', 'terminal'] as const) expect(isVisible(t, b)).toBe(true);
   });
 });
 

@@ -438,19 +438,74 @@ fn last_usage(path: &Path) -> Option<u64> {
 }
 
 /// `id` names the session; without one, the most recently written transcript of the project.
-pub fn session_usage_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<u64> {
+fn session_path(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<PathBuf> {
     let dir = find_project_dir(claude_projects, project_path)?;
-    let path = match id {
-        Some(id) if valid_id(id) => dir.join(format!("{id}.jsonl")),
-        Some(_) => return None,
-        None => std::fs::read_dir(&dir)
-            .ok()?
-            .flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
-            .max_by_key(|e| e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH))?
-            .path(),
+    match id {
+        Some(id) if valid_id(id) => Some(dir.join(format!("{id}.jsonl"))),
+        Some(_) => None,
+        None => Some(
+            std::fs::read_dir(&dir)
+                .ok()?
+                .flatten()
+                .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+                .max_by_key(|e| e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH))?
+                .path(),
+        ),
+    }
+}
+
+pub fn session_usage_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<u64> {
+    last_usage(&session_path(claude_projects, project_path, id)?)
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SessionFile {
+    pub path: String,
+    pub edits: u32,
+}
+
+const EDIT_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+
+/// Files written by the main thread of a session, most recently touched first.
+pub fn session_files_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Vec<SessionFile> {
+    let Some(path) = session_path(claude_projects, project_path, id) else {
+        return Vec::new();
     };
-    last_usage(&path)
+    let Ok(file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<SessionFile> = Vec::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if !line.contains("\"tool_use\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let Some(blocks) = v.pointer("/message/content").and_then(Value::as_array) else {
+            continue;
+        };
+        for b in blocks {
+            if b.get("type").and_then(Value::as_str) != Some("tool_use") {
+                continue;
+            }
+            if !b.get("name").and_then(Value::as_str).is_some_and(|n| EDIT_TOOLS.contains(&n)) {
+                continue;
+            }
+            let input = b.get("input");
+            let target = input.and_then(|i| i.get("file_path").or_else(|| i.get("notebook_path"))).and_then(Value::as_str);
+            let Some(target) = target else { continue };
+            let edits = match out.iter().position(|f| f.path == target) {
+                Some(i) => out.remove(i).edits + 1,
+                None => 1,
+            };
+            out.insert(0, SessionFile { path: target.to_string(), edits });
+        }
+    }
+    out
 }
 
 fn claude_projects_dir() -> Result<PathBuf, String> {
@@ -464,6 +519,11 @@ pub fn sessions_list(
     cache: tauri::State<'_, SessionCache>,
 ) -> Result<Vec<SessionMeta>, String> {
     Ok(sessions_list_impl(&claude_projects_dir()?, &project_path, &cache))
+}
+
+#[tauri::command(async)]
+pub fn session_files(project_path: String, id: Option<String>) -> Result<Vec<SessionFile>, String> {
+    Ok(session_files_impl(&claude_projects_dir()?, &project_path, id.as_deref()))
 }
 
 #[tauri::command(async)]
@@ -511,6 +571,33 @@ mod tests {
             r#"{{"type":"user","message":{{"role":"user","content":{}}},"timestamp":"{ts}"}}"#,
             serde_json::to_string(s).unwrap()
         )
+    }
+
+    #[test]
+    fn session_files_lists_edits_newest_first_without_subagents_or_reads() {
+        let (d, projects) = setup();
+        let dir = projects.join(project_slug("C:/q"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tool = |name: &str, file: &str, side: bool| format!(
+            r#"{{"type":"assistant","isSidechain":{side},"message":{{"content":[{{"type":"tool_use","name":"{name}","input":{{"file_path":"{file}"}}}}]}}}}"#
+        );
+        let body = [
+            tool("Edit", "a.ts", false),
+            tool("Write", "b.ts", false),
+            tool("Read", "c.ts", false),
+            tool("Edit", "d.ts", true),
+            tool("Edit", "a.ts", false),
+            "non json con \"tool_use\"".to_string(),
+        ]
+        .join("\n");
+        std::fs::write(dir.join("s-1.jsonl"), body).unwrap();
+        let got = session_files_impl(&projects, "C:/q", Some("s-1"));
+        assert_eq!(got, vec![
+            SessionFile { path: "a.ts".into(), edits: 2 },
+            SessionFile { path: "b.ts".into(), edits: 1 },
+        ]);
+        assert!(session_files_impl(&projects, "C:/q", Some("manca")).is_empty());
+        drop(d);
     }
 
     #[test]

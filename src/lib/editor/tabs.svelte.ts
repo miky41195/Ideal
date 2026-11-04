@@ -3,6 +3,7 @@ import { decideDiskChange } from './disk-policy';
 import { showToast } from '../ui/toast.svelte';
 import type { BackupSink } from './hot-exit';
 import { lsp } from '../lsp/lsp-manager.svelte';
+import { setFileOpener } from '../lsp/jump';
 
 export type TabKind = 'file' | 'diff' | 'heatmap' | 'doc' | 'transcript';
 
@@ -436,3 +437,12 @@ export class Tabs {
 
 export const tabs = new Tabs();
 export const openFile = (path: string) => tabs.openFile(path);
+
+setFileOpener({
+  async read(path) {
+    await tabs.openFile(path);
+    const t = tabs.tabs.find((x) => x.path === path && isFileTab(x));
+    return t ? t.content : null;
+  },
+  reveal: (path, line, col) => void tabs.reveal(path, line, col),
+});
