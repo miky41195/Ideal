@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="led" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d6f6ff"/>
+      <stop offset="0.45" stop-color="#38c6ff"/>
+      <stop offset="1" stop-color="#0a84e0"/>
+    </radialGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="#1b1c20"/>
+  <g transform="rotate(-7 512 560)">
+    <rect x="482" y="190" width="60" height="180" rx="30" fill="#d3d9e4"/>
+    <circle cx="512" cy="172" r="82" fill="#3ee07f"/>
+    <circle cx="486" cy="146" r="22" fill="#c9ffe0"/>
+    <rect x="96" y="490" width="120" height="220" rx="56" fill="#c3cad8"/>
+    <rect x="808" y="490" width="120" height="220" rx="56" fill="#c3cad8"/>
+    <rect x="170" y="330" width="684" height="540" rx="170" fill="#ffffff"/>
+    <circle cx="358" cy="540" r="112" fill="#1b1c20"/>
+    <circle cx="666" cy="540" r="112" fill="#1b1c20"/>
+    <circle cx="358" cy="540" r="84" fill="url(#led)"/>
+    <circle cx="666" cy="540" r="84" fill="url(#led)"/>
+    <circle cx="330" cy="510" r="24" fill="#ffffff"/>
+    <circle cx="638" cy="510" r="24" fill="#ffffff"/>
+    <path d="M352 714 Q512 830 672 714" fill="none" stroke="#1b1c20" stroke-width="52" stroke-linecap="round"/>
+  </g>
+</svg>
