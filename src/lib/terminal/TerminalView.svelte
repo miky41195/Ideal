@@ -24,6 +24,8 @@
     onerror,
     onspawn,
     ondraft,
+    onsubmit,
+    onscreen,
   }: {
     kind: PtyKind;
     cwd: string;
@@ -33,6 +35,10 @@
     onspawn?: (ptyId: number) => void;
     /** Called with the text in Claude's input box after the screen settles. */
     ondraft?: (text: string) => void;
+    /** Enter pressed alone; pasted text with line breaks does not count. */
+    onsubmit?: () => void;
+    /** The visible text changed. Raw output is no signal: Claude keeps repainting the same screen while idle. */
+    onscreen?: () => void;
   } = $props();
 
   let host: HTMLDivElement;
@@ -95,6 +101,7 @@
 
     // Wire input before spawn so ConPTY's ESC[6n reply is never lost.
     t.onData((s) => {
+      if (s === '\r') onsubmit?.();
       if (ptyId !== null) writePty(ptyId, s).catch((e) => console.warn('pty_write failed', e));
     });
 
@@ -142,11 +149,30 @@
     const scanDraft = debounce(() => {
       if (ondraft && !destroyed) ondraft(extractDraft(screenRows(t)));
     }, 200);
-    const offParsed = t.onWriteParsed(scanDraft);
+    let lastScreen = '';
+    let screenTimer: ReturnType<typeof setTimeout> | undefined;
+    const watchScreen = () => {
+      if (screenTimer || !onscreen) return;
+      screenTimer = setTimeout(() => {
+        screenTimer = undefined;
+        if (destroyed) return;
+        const now = screenRows(t)
+          .map((r) => r.text)
+          .join('\n');
+        if (now === lastScreen) return;
+        lastScreen = now;
+        onscreen?.();
+      }, 500);
+    };
+    const offParsed = t.onWriteParsed(() => {
+      scanDraft();
+      watchScreen();
+    });
 
     return () => {
       destroyed = true;
       scanDraft.cancel();
+      clearTimeout(screenTimer);
       offParsed.dispose();
       ro.disconnect();
       if (ptyId !== null) killPty(ptyId).catch(() => {});

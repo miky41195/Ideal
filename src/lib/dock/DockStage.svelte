@@ -13,7 +13,10 @@
   import Icon from '../ui/Icon.svelte';
   import { BLOCK_META } from './meta';
   import { claudeUsage } from '../claude/usage.svelte';
-  import { formatTokens } from '../claude/tokens';
+  import { contextLevel, formatTokens } from '../claude/tokens';
+  import { sendToActiveClaude } from '../claude/send-bridge';
+  import { settings } from '../settings/settings.svelte';
+  import { showToast } from '../ui/toast.svelte';
   import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
 
   let { project }: { project: string } = $props();
@@ -74,6 +77,9 @@
       },
     };
   }
+
+  const level = $derived(contextLevel(claudeUsage.context, settings.value.claude.contextWarn));
+  const runCompact = () => void sendToActiveClaude('/compact').catch((e) => showToast(String(e)));
 
   function usageHint(context: number | null, draft: number): string {
     const n = (v: number) => v.toLocaleString('it-IT');
@@ -222,14 +228,18 @@
           >
             <Icon name={META[b].icon} size={14} />
             {#if !compact || (b === group.active && !tight)}<span>{META[b].label}</span>{/if}
+            {#if b === 'claude' && ws.needsAttention}<i class="dot" title="Claude ti aspetta"></i>{/if}
           </button>
         {/each}
         </div>
         {#if group.active === 'claude'}
           {#if (claudeUsage.context !== null || claudeUsage.draft > 0) && rect.w > 460}
-            <span class="usage" title={usageHint(claudeUsage.context, claudeUsage.draft)}>
+            <span class="usage {level}" title={usageHint(claudeUsage.context, claudeUsage.draft)}>
               {#if claudeUsage.context !== null}{formatTokens(claudeUsage.context)} contesto{/if}{#if claudeUsage.draft}<b>+ ~{formatTokens(claudeUsage.draft)}</b>{/if}
             </span>
+            {#if level !== 'ok'}
+              <button class="act text" title="Scrive /compact nella casella di Claude: premi Invio per confermare" onclick={runCompact}>Compatta</button>
+            {/if}
           {/if}
           <button class="act text" title="costa più token; claude-mem dà già il contesto" onclick={() => ws.addClaudeTab('continue')}>Riprendi ultima</button>
           <button class="act" title="Nuova sessione (Ctrl+Maiusc+T)" aria-label="Nuova sessione" onclick={() => ws.addClaudeTab('new')}><Icon name="plus" size={14} /></button>
@@ -365,6 +375,19 @@
     color: var(--text-dim);
     font-size: 12px;
     white-space: nowrap;
+  }
+  .usage.warn {
+    color: var(--warn);
+  }
+  .usage.high {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .usage b {
     margin-left: 6px;
