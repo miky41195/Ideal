@@ -1,5 +1,7 @@
 import type { Extension } from '@codemirror/state';
 import { LSPClient, languageServerExtensions, type Transport } from '@codemirror/lsp-client';
+import type { EditorView } from '@codemirror/view';
+import { displayTarget } from './jump';
 import DOMPurify from 'dompurify';
 import { showToast } from '../ui/toast.svelte';
 import { languageIdFor, serverKeyFor } from './lang';
@@ -31,12 +33,16 @@ export interface LspDeps {
 const defaultDeps: LspDeps = {
   start: startServer,
   stop: stopServer,
-  createClient: (rootUri) =>
-    new LSPClient({
+  createClient: (rootUri) => {
+    const client = new LSPClient({
       rootUri,
       sanitizeHTML: (h) => DOMPurify.sanitize(h),
       extensions: [...languageServerExtensions(), pullDiagnostics()],
-    }),
+    });
+    // Stock displayFile only knows files already open in this client.
+    client.workspace.displayFile = (uri) => displayTarget(uri) as unknown as Promise<EditorView | null>;
+    return client;
+  },
   notify: (m) => showToast(m),
 };
 

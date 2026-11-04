@@ -330,6 +330,28 @@ pub fn set_window_chrome(window: tauri::WebviewWindow, caption: String, text: St
     Ok(())
 }
 
+const KEYBINDINGS_TEMPLATE: &str = "[\n]\n";
+
+#[tauri::command(async)]
+pub fn get_keybindings() -> Option<String> {
+    std::fs::read_to_string(config_dir().join("keybindings.json")).ok()
+}
+
+/// Path of keybindings.json; creates an empty list if missing.
+pub fn ensure_keybindings_file(dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(err)?;
+    let path = dir.join("keybindings.json");
+    if !path.exists() {
+        std::fs::write(&path, KEYBINDINGS_TEMPLATE).map_err(err)?;
+    }
+    Ok(path)
+}
+
+#[tauri::command(async)]
+pub fn keybindings_path() -> Result<String, String> {
+    ensure_keybindings_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[tauri::command(async)]
 pub fn settings_path() -> Result<String, String> {
     ensure_settings_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
@@ -386,10 +408,10 @@ pub fn start_watcher(app: AppHandle) {
         return;
     }
     let (tx, rx) = mpsc::channel::<()>();
-    let name = std::ffi::OsString::from("settings.json");
+    let names = [std::ffi::OsString::from("settings.json"), std::ffi::OsString::from("keybindings.json")];
     let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(ev) = res {
-            if ev.paths.iter().any(|p| p.file_name() == Some(name.as_os_str())) {
+            if ev.paths.iter().any(|p| p.file_name().is_some_and(|f| names.iter().any(|n| n.as_os_str() == f))) {
                 let _ = tx.send(());
             }
         }
@@ -411,6 +433,7 @@ pub fn start_watcher(app: AppHandle) {
             // Debounce: wait until 200 ms pass without new events.
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
             let _ = app.emit("settings://changed", load(&dir));
+            let _ = app.emit("keybindings://changed", ());
         }
     });
 }
@@ -492,6 +515,16 @@ mod tests {
         assert_eq!(load_state(d.path()), AppState::default());
         assert_eq!(fs::read_to_string(d.path().join("state.json.bad")).unwrap(), "{ broken");
         assert!(!d.path().join("state.json").exists());
+    }
+
+    #[test]
+    fn keybindings_file_is_created_once() {
+        let d = tmp();
+        let p = ensure_keybindings_file(d.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), KEYBINDINGS_TEMPLATE);
+        std::fs::write(&p, "[1]").unwrap();
+        ensure_keybindings_file(d.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "[1]");
     }
 
     #[test]

@@ -10,6 +10,7 @@
   import HubPanel from '../hub/HubPanel.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
   import NotesPanel from '../notes/NotesPanel.svelte';
+  import ChangesPanel from '../claude/ChangesPanel.svelte';
   import Icon from '../ui/Icon.svelte';
   import { BLOCK_META } from './meta';
   import { claudeUsage } from '../claude/usage.svelte';
@@ -269,6 +270,8 @@
             <Explorer root={project} />
           {:else if b === 'git'}
             <GitPanel />
+          {:else if b === 'changes'}
+            <ChangesPanel projectPath={project} />
           {:else if b === 'search'}
             <SearchPanel projectPath={project} />
           {:else if b === 'notes'}

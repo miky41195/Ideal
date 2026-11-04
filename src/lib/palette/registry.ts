@@ -1,4 +1,4 @@
-import { DEFAULT_BINDINGS, type Command } from '../keys/router';
+import { currentBindings, type Command } from '../keys/router';
 import { fuzzyScore } from '../search/fuzzy';
 
 export interface PaletteCommand {
@@ -37,9 +37,9 @@ export function filterCommands(query: string, cmds: PaletteCommand[]): PaletteCo
 
 const KEY_NAMES: Record<string, string> = { Backquote: '`' };
 
-/** Shortcut text of the first default binding for `command`, e.g. "Ctrl+Shift+E". */
+/** Shortcut text of the first binding for `command`, e.g. "Ctrl+Shift+E". */
 export function formatBinding(command: Command): string | undefined {
-  const b = DEFAULT_BINDINGS.find((x) => x.command === command);
+  const b = currentBindings().find((x) => x.command === command);
   if (!b) return undefined;
   const key = KEY_NAMES[b.code] ?? b.code.replace(/^Key/, '').replace(/^Digit/, '');
   return [b.ctrl ? 'Ctrl' : '', b.shift ? 'Shift' : '', key].filter(Boolean).join('+');

@@ -1,6 +1,6 @@
 /** Pure layout model for the block workspace: a tree of splits whose leaves are tab groups. */
 
-export const ALL_BLOCKS = ['claude', 'editor', 'terminal', 'explorer', 'git', 'search', 'notes', 'hub'] as const;
+export const ALL_BLOCKS = ['claude', 'editor', 'terminal', 'explorer', 'git', 'changes', 'search', 'notes', 'hub'] as const;
 export type BlockId = (typeof ALL_BLOCKS)[number];
 
 export interface Group {
@@ -48,7 +48,7 @@ export function defaultLayout(): DockNode {
     dir: 'row',
     sizes: [0.22, 0.78],
     children: [
-      { type: 'group', id: 'g1', blocks: ['explorer', 'git', 'search', 'notes', 'hub'], active: 'explorer' },
+      { type: 'group', id: 'g1', blocks: ['explorer', 'git', 'changes', 'search', 'notes', 'hub'], active: 'explorer' },
       {
         type: 'split',
         dir: 'col',
@@ -61,6 +61,37 @@ export function defaultLayout(): DockNode {
     ],
   };
 }
+
+/** Ready-made arrangements. */
+export const PRESETS: { id: string; label: string; build: () => DockNode }[] = [
+  {
+    id: 'focus',
+    label: 'Focus Claude',
+    build: () => setCollapsed(setCollapsed(defaultLayout(), 'g1', true), 'g3', true),
+  },
+  {
+    id: 'review',
+    label: 'Revisione',
+    build: () => ({
+      type: 'split',
+      dir: 'row',
+      sizes: [0.22, 0.48, 0.3],
+      children: [
+        { type: 'group', id: 'g1', blocks: ['changes', 'git', 'explorer', 'search', 'notes', 'hub'], active: 'changes' },
+        { type: 'group', id: 'g2', blocks: ['editor'], active: 'editor' },
+        {
+          type: 'split',
+          dir: 'col',
+          sizes: [0.7, 0.3],
+          children: [
+            { type: 'group', id: 'g3', blocks: ['claude'], active: 'claude' },
+            { type: 'group', id: 'g4', blocks: ['terminal'], active: 'terminal' },
+          ],
+        },
+      ],
+    }),
+  },
+];
 
 export function allGroups(n: DockNode): Group[] {
   return n.type === 'group' ? [n] : n.children.flatMap(allGroups);
@@ -273,7 +304,7 @@ function clean(raw: unknown, seen: Set<BlockId>): DockNode | null {
   return null;
 }
 
-/** Validates a stored layout; a block it lost lands in the group of Claude, so nothing becomes unreachable. */
+/** Validates a stored layout; a block it lacks lands beside the file tree, or with Claude, so nothing becomes unreachable. */
 export function normalize(raw: unknown): DockNode {
   const seen = new Set<BlockId>();
   const cleaned = clean(raw, seen);
@@ -281,6 +312,6 @@ export function normalize(raw: unknown): DockNode {
   if (!tree || !seen.size) return defaultLayout();
   const missing = ALL_BLOCKS.filter((b) => !seen.has(b));
   if (!missing.length) return tree;
-  const home = findGroup(tree, 'claude')?.id ?? allGroups(tree)[0].id;
+  const home = (findGroup(tree, 'explorer') ?? findGroup(tree, 'claude') ?? allGroups(tree)[0]).id;
   return mapGroups(tree, (g) => (g.id === home ? { ...g, blocks: [...g.blocks, ...missing] } : g));
 }
