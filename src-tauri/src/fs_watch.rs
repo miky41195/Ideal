@@ -27,16 +27,27 @@ fn norm(p: &str) -> String {
     p.replace('\\', "/").to_lowercase()
 }
 
-/// Drops everything under `<root>/.git` (case-insensitive, either separator) and duplicates.
+/// Build/dependency folders that churn thousands of files during `npm install` / `cargo build`.
+/// Tabs open inside them are not auto-reloaded (rare; reopen the file).
+const NOISY_DIRS: &[&str] = &["node_modules", "target"];
+
+/// True when `n` (normalized) lies under a noisy folder below `root_norm`.
+fn is_noisy(root_norm: &str, n: &str) -> bool {
+    let rel = n.strip_prefix(root_norm).unwrap_or(n);
+    rel.split('/').any(|seg| NOISY_DIRS.contains(&seg))
+}
+
+/// Drops everything under `<root>/.git`, under `node_modules`/`target` folders, (case-insensitive, either separator) and duplicates.
 /// Keeps the original spelling and order of the remaining paths.
 pub fn filter_paths(root: &str, paths: &[String]) -> Vec<String> {
-    let git = format!("{}/.git", norm(root).trim_end_matches('/'));
+    let root_norm = norm(root).trim_end_matches('/').to_string();
+    let git = format!("{root_norm}/.git");
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for p in paths {
         let n = norm(p);
         let in_git = n == git || n.starts_with(&format!("{git}/"));
-        if in_git || !seen.insert(n) {
+        if in_git || is_noisy(&root_norm, &n) || !seen.insert(n) {
             continue;
         }
         out.push(p.clone());
@@ -113,6 +124,26 @@ mod tests {
                 "C:\\proj\\.github\\x.yml".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn filter_drops_noisy_build_dirs() {
+        let paths = vec![
+            "C:\\proj\\node_modules\\x\\index.js".to_string(),
+            "C:\\proj\\src-tauri\\target\\debug\\a.rlib".to_string(),
+            "C:\\proj\\src\\target_list.ts".to_string(),
+            "C:\\proj\\src\\main.ts".to_string(),
+        ];
+        assert_eq!(
+            filter_paths("C:\\proj", &paths),
+            vec!["C:\\proj\\src\\target_list.ts".to_string(), "C:\\proj\\src\\main.ts".to_string()]
+        );
+    }
+
+    #[test]
+    fn noisy_check_ignores_root_name() {
+        // A project whose own folder is called "target" must still be watched.
+        assert!(!is_noisy("c:/work/target", "c:/work/target/src/a.rs"));
     }
 
     #[test]
