@@ -5,6 +5,8 @@
   import HubPanel from '../hub/HubPanel.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
   import NotesPanel from '../notes/NotesPanel.svelte';
+  import VSplitter from './VSplitter.svelte';
+  import { settings } from '../settings/settings.svelte';
   let { view, projectPath }: { view: SidebarView; projectPath: string } = $props();
   const titles: Record<SidebarView, string> = {
     explorer: 'Esplora file',
@@ -13,9 +15,30 @@
     notes: 'Note',
     hub: 'Claude Hub',
   };
+
+  // Width survives view switches and restarts (per-viewer convenience, so localStorage is enough).
+  const KEY = 'ideal.sidebarWidth';
+  function loadWidth(): number {
+    try {
+      const v = Number(localStorage.getItem(KEY));
+      if (v >= 160 && v <= 640) return v;
+    } catch {
+      /* storage unavailable */
+    }
+    return settings.value.layout.sidebarWidth;
+  }
+  let width = $state(loadWidth());
+  function resize(w: number) {
+    width = w;
+    try {
+      localStorage.setItem(KEY, String(w));
+    } catch {
+      /* ignore */
+    }
+  }
 </script>
 
-<aside>
+<aside style:width="{width}px">
   <div class="title">{titles[view]}</div>
   {#if view === 'explorer'}
     <Explorer root={projectPath} />
@@ -33,12 +56,12 @@
     </div>
   {/if}
 </aside>
+<VSplitter {width} onresize={resize} />
 
 <style>
   aside {
-    width: 240px;
+    flex: none;
     background: var(--panel);
-    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;

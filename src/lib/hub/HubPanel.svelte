@@ -120,7 +120,7 @@
       {#if open.sessions}
         {#if hub.error.sessions}<div class="err">{hub.error.sessions}</div>{/if}
         {#each hub.filteredSessions as s (s.id)}
-          <div class="row" role="button" tabindex="0" onclick={() => openSession(s)} onkeydown={(e) => keyAct(e, () => openSession(s))}>
+          <div class="row" role="button" tabindex="0" title={s.title} onclick={() => openSession(s)} onkeydown={(e) => keyAct(e, () => openSession(s))}>
             <span class="t">{s.title}</span><span class="d">{relativeDate(s.updated)}</span>
           </div>
         {:else}
@@ -148,7 +148,7 @@
           {#if hub.error.observations}<div class="err">{hub.error.observations}</div>{/if}
           {#if hub.error.summaries}<div class="err">{hub.error.summaries}</div>{/if}
           {#each hub.observations as o (o.id)}
-            <div class="row" role="button" tabindex="0" onclick={() => openObs(o)} onkeydown={(e) => keyAct(e, () => openObs(o))}>
+            <div class="row" role="button" tabindex="0" title={o.title} onclick={() => openObs(o)} onkeydown={(e) => keyAct(e, () => openObs(o))}>
               <span class="badge">{o.kind}</span><span class="t">{o.title}</span><span class="d">{relativeDate(o.createdAtEpoch)}</span>
             </div>
           {:else}
@@ -160,7 +160,7 @@
           {#if hub.summaries.length}
             <div class="sub">Riepiloghi</div>
             {#each hub.summaries as s (s.id)}
-              <div class="row" role="button" tabindex="0" onclick={() => openSummary(s)} onkeydown={(e) => keyAct(e, () => openSummary(s))}>
+              <div class="row" role="button" tabindex="0" title={s.request ?? 'Riepilogo'} onclick={() => openSummary(s)} onkeydown={(e) => keyAct(e, () => openSummary(s))}>
                 <span class="t">{s.request ?? 'Riepilogo'}</span><span class="d">{relativeDate(s.createdAtEpoch)}</span>
               </div>
             {/each}
@@ -176,7 +176,7 @@
       {#if open.memories}
         {#if hub.error.memories}<div class="err">{hub.error.memories}</div>{/if}
         {#each hub.filteredMemories as f (f.path)}
-          <div class="row" role="button" tabindex="0" onclick={() => openFile(f)} onkeydown={(e) => keyAct(e, () => openFile(f))}>
+          <div class="row" role="button" tabindex="0" title={f.name} onclick={() => openFile(f)} onkeydown={(e) => keyAct(e, () => openFile(f))}>
             <span class="t">{f.name}</span><span class="d">{relativeDate(f.updated)}</span>
           </div>
         {:else}
@@ -192,7 +192,7 @@
       {#if open.docs}
         {#if hub.error.docs}<div class="err">{hub.error.docs}</div>{/if}
         {#each docs as f (f.path)}
-          <div class="row" role="button" tabindex="0" onclick={() => openFile(f)} onkeydown={(e) => keyAct(e, () => openFile(f))}>
+          <div class="row" role="button" tabindex="0" title={f.name} onclick={() => openFile(f)} onkeydown={(e) => keyAct(e, () => openFile(f))}>
             <span class="t">{isState(f) ? '📌 ' : ''}{f.name}</span><span class="d">{relativeDate(f.updated)}</span>
           </div>
         {:else}
