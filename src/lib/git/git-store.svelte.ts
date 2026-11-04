@@ -72,7 +72,8 @@ export function onGitChanged(cb: () => void): () => void {
 
 /** First refresh, start the backend watcher, follow git://changed and window focus. */
 export async function initGit(projectPath: string): Promise<() => void> {
-  git.path = projectPath;
+  // Work at the repo root: status paths and diffs are root-relative even if the project is a subfolder.
+  git.path = (await gitToplevel(projectPath).catch(() => null)) ?? projectPath;
   const offs: (() => void)[] = [];
   try {
     offs.push(
