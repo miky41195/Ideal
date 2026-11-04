@@ -214,8 +214,8 @@
   .row { margin: 0 4px; border-radius: var(--radius-s); display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 18px; cursor: pointer; font-size: 12px; }
   .row:hover, .row:focus-visible { background: var(--panel-2); outline: none; }
   .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .d { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
-  .badge { font-size: 10px; padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text-dim); }
+  .d { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+  .badge { font-size: 12px; padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-s); color: var(--text-dim); }
   .dim, .sub { padding: 3px 10px 3px 18px; color: var(--text-dim); font-size: 12px; }
   .sub { font-size: 12px; font-weight: 600; padding-top: 8px; }
   .more { margin: 4px 18px; font-size: 12px; }
@@ -223,5 +223,5 @@
   .btns { display: flex; gap: 6px; margin-top: 6px; }
   .ttl { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pin { display: inline-block; vertical-align: -2px; margin-right: 4px; color: var(--accent); }
-  .err { color: var(--danger); font-size: 11px; padding: 3px 10px; word-break: break-word; }
+  .err { color: var(--danger); font-size: 12px; padding: 3px 10px; word-break: break-word; }
 </style>

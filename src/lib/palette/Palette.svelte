@@ -124,7 +124,7 @@
   .keys {
     float: right;
     color: var(--text-dim);
-    font-size: 11.5px;
+    font-size: 12px;
   }
   .empty {
     padding: 6px 10px;

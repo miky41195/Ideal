@@ -49,9 +49,9 @@
     padding: 4px;
     list-style: none;
     min-width: 160px;
-    background: var(--panel-2);
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     box-shadow: var(--shadow-pop);
   }
   button {

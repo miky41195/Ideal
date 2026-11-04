@@ -34,7 +34,18 @@
 <div class="area">
   <div class="strip" role="tablist">
     {#each tabs.tabs as t (t.path)}
-      <div class="tab" class:active={t.path === tabs.activePath} role="presentation">
+      <!-- Middle click closes, like a browser tab; mousedown is stopped so Windows autoscroll never starts. -->
+      <div
+        class="tab"
+        class:active={t.path === tabs.activePath}
+        role="presentation"
+        onmousedown={(e) => e.button === 1 && e.preventDefault()}
+        onauxclick={(e) => {
+          if (e.button !== 1) return;
+          e.preventDefault();
+          void close(t.path);
+        }}
+      >
         <button class="label" role="tab" aria-selected={t.path === tabs.activePath} title={isFileTab(t) ? t.path : t.name} onclick={() => tabs.select(t.path)}>
           {t.name}{#if t.orphaned}<span class="orph"> (eliminato)</span>{/if}{#if dirty(t)}<span class="dot" aria-label="modificato"></span>{/if}
         </button>

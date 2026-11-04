@@ -409,6 +409,50 @@ pub fn docs_list_impl(project_path: &str) -> Vec<MdFile> {
     out
 }
 
+/// Bytes read from the end of a transcript: the last reply is always near the end.
+const USAGE_TAIL: u64 = 2 * 1024 * 1024;
+
+/// Tokens the next turn starts from, per the session's last main-thread reply.
+fn usage_of_line(line: &str) -> Option<u64> {
+    if !line.contains("\"usage\"") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(line).ok()?;
+    if v.get("type")?.as_str()? != "assistant" || v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let u = v.get("message")?.get("usage")?;
+    let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+    Some(n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens") + n("output_tokens"))
+}
+
+fn last_usage(path: &Path) -> Option<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(USAGE_TAIL))).ok()?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    // The first line may be cut by the seek; it simply fails to parse.
+    String::from_utf8_lossy(&buf).lines().rev().find_map(usage_of_line)
+}
+
+/// `id` names the session; without one, the most recently written transcript of the project.
+pub fn session_usage_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<u64> {
+    let dir = find_project_dir(claude_projects, project_path)?;
+    let path = match id {
+        Some(id) if valid_id(id) => dir.join(format!("{id}.jsonl")),
+        Some(_) => return None,
+        None => std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+            .max_by_key(|e| e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH))?
+            .path(),
+    };
+    last_usage(&path)
+}
+
 fn claude_projects_dir() -> Result<PathBuf, String> {
     let home = std::env::var_os("USERPROFILE").ok_or("home non trovata")?;
     Ok(PathBuf::from(home).join(".claude").join("projects"))
@@ -420,6 +464,11 @@ pub fn sessions_list(
     cache: tauri::State<'_, SessionCache>,
 ) -> Result<Vec<SessionMeta>, String> {
     Ok(sessions_list_impl(&claude_projects_dir()?, &project_path, &cache))
+}
+
+#[tauri::command(async)]
+pub fn session_usage(project_path: String, id: Option<String>) -> Result<Option<u64>, String> {
+    Ok(session_usage_impl(&claude_projects_dir()?, &project_path, id.as_deref()))
 }
 
 #[tauri::command(async)]
@@ -462,6 +511,24 @@ mod tests {
             r#"{{"type":"user","message":{{"role":"user","content":{}}},"timestamp":"{ts}"}}"#,
             serde_json::to_string(s).unwrap()
         )
+    }
+
+    #[test]
+    fn usage_sums_the_last_main_reply_and_skips_subagents() {
+        let (d, projects) = setup();
+        let dir = projects.join(project_slug("C:/p"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let reply = |n: u64, side: bool| format!(
+            r#"{{"type":"assistant","isSidechain":{side},"message":{{"usage":{{"input_tokens":{n},"cache_creation_input_tokens":10,"cache_read_input_tokens":100,"output_tokens":5}}}}}}"#
+        );
+        let user = r#"{"type":"user","message":{"content":"ciao"}}"#;
+        let body = [reply(1, false), reply(2, false), reply(999, true), user.to_string(), "non json".to_string()].join("\n");
+        std::fs::write(dir.join("abc-1.jsonl"), body).unwrap();
+        assert_eq!(session_usage_impl(&projects, "C:/p", Some("abc-1")), Some(117));
+        assert_eq!(session_usage_impl(&projects, "C:/p", None), Some(117));
+        assert_eq!(session_usage_impl(&projects, "C:/p", Some("manca")), None);
+        assert_eq!(session_usage_impl(&projects, "C:/p", Some("../x")), None);
+        drop(d);
     }
 
     #[test]

@@ -20,10 +20,10 @@
     pointer-events: none;
   }
   .toast {
-    background: var(--panel-2);
+    background: var(--panel);
     color: var(--text);
     border: 1px solid var(--accent-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 8px 12px;
     font-size: 12px;
     box-shadow: var(--shadow-pop);

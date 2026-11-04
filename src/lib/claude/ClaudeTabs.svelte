@@ -6,6 +6,9 @@
   import type { PtyKind } from '../terminal/pty-client';
   import type { ClaudeTab, Workspace } from '../state/workspace.svelte';
   import Icon from '../ui/Icon.svelte';
+  import { claudeUsage } from './usage.svelte';
+  import { estimateTokens } from './tokens';
+  import { debounce, onTerminalActivity } from '../terminal/activity';
 
   let { ws, cwd, visible }: { ws: Workspace; cwd: string; visible: boolean } = $props();
 
@@ -16,7 +19,7 @@
   function kindOf(t: ClaudeTab): PtyKind {
     if (t.kind === 'continue') return { type: 'Claude', resume: null, continue_last: true };
     if (t.kind === 'resume') return { type: 'Claude', resume: t.resumeId ?? null, continue_last: false };
-    return { type: 'Claude', resume: null, continue_last: false };
+    return { type: 'Claude', resume: null, continue_last: false, session_id: t.sessionId ?? null };
   }
 
   // PTY ids per tab (plain maps: not rendered). Waiters resolve once a tab's PTY has spawned.
@@ -40,6 +43,25 @@
     return new Promise((ok, fail) => waiters.set(tabId, [...(waiters.get(tabId) ?? []), { ok, fail }]));
   }
 
+  // Real context size comes from the transcript once output settles; nothing runs while hidden.
+  const readUsage = () => {
+    if (visible) void claudeUsage.refresh(cwd, ws.activeClaudeTab?.sessionId ?? null);
+  };
+  onMount(() => {
+    const later = debounce(readUsage, 1500);
+    const off = onTerminalActivity(later);
+    return () => {
+      off();
+      later.cancel();
+    };
+  });
+  $effect(() => {
+    void ws.activeClaudeId;
+    claudeUsage.context = null;
+    claudeUsage.draft = 0;
+    readUsage();
+  });
+
   // Types text into the active Claude (no Enter), creating a tab first if there is none.
   onMount(() =>
     setClaudeSender(async (text) => {
@@ -59,6 +81,7 @@
   function restart(id: string) {
     ptys.delete(id);
     failWaiters(id, 'Sessione Claude riavviata');
+    ws.renewSession(id);
     status[id] = { gen: st(id).gen + 1 };
   }
 </script>
@@ -86,6 +109,7 @@
             {cwd}
             visible={shown}
             onspawn={(pid) => spawned(t.id, pid)}
+            ondraft={shown ? (text) => (claudeUsage.draft = estimateTokens(text)) : undefined}
             onexit={() => {
               ptys.delete(t.id);
               failWaiters(t.id, 'Sessione Claude terminata');

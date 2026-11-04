@@ -302,7 +302,7 @@
     width: 14px;
     flex: none;
     color: var(--text-dim);
-    font-size: 10px;
+    font-size: 12px;
   }
   .editing {
     height: auto;
@@ -325,7 +325,7 @@
   }
   .err {
     color: var(--danger);
-    font-size: 11px;
+    font-size: 12px;
     padding: 2px 12px;
   }
   .editwrap .err {

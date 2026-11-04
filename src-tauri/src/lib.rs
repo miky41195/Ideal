@@ -77,6 +77,7 @@ pub fn run() {
             plugins::plugin_enable,
             hub::sessions_list,
             hub::session_read,
+            hub::session_usage,
             hub::memories_list,
             hub::docs_list,
             fs_watch::fs_watch,

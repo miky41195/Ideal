@@ -7,6 +7,8 @@ export interface ClaudeTab {
   title: string;
   kind: ClaudeTabKind;
   resumeId?: string;
+  /** Transcript id, known up front for new sessions and resumes; `continue` picks the newest. */
+  sessionId?: string;
 }
 
 export class Workspace {
@@ -43,10 +45,17 @@ export class Workspace {
 
   addClaudeTab(kind: ClaudeTabKind = 'new', resumeId?: string): ClaudeTab {
     this.#counter += 1;
-    const tab: ClaudeTab = { id: `claude-${this.#counter}`, title: `Claude ${this.#counter}`, kind, resumeId };
+    const sessionId = kind === 'new' ? crypto.randomUUID() : resumeId;
+    const tab: ClaudeTab = { id: `claude-${this.#counter}`, title: `Claude ${this.#counter}`, kind, resumeId, sessionId };
     this.claudeTabs.push(tab);
     this.activeClaudeId = tab.id;
     return this.claudeTabs[this.claudeTabs.length - 1];
+  }
+
+  /** A restarted new session cannot reuse its id: Claude refuses one already taken. */
+  renewSession(id: string): void {
+    const t = this.claudeTabs.find((x) => x.id === id);
+    if (t?.kind === 'new') t.sessionId = crypto.randomUUID();
   }
 
   selectClaudeTab(id: string): void {

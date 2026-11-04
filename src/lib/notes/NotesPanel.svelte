@@ -182,12 +182,11 @@
   .row:hover, .row:focus-within { background: var(--panel-2); }
   .row.done .t { text-decoration: line-through; color: var(--text-dim); }
   .t { flex: 1; min-width: 0; overflow-wrap: anywhere; cursor: text; }
-  .t:focus-visible { outline: 1px solid var(--accent); }
   .edit { flex: 1; min-width: 0; }
   .ic { padding: 0 5px; color: var(--text-dim); }
   .ic:hover, .ic:focus-visible { color: var(--text); }
   .dim { padding: 3px 10px; color: var(--text-dim); font-size: 12px; }
-  .err { color: var(--danger); font-size: 11px; padding: 3px 10px; word-break: break-word; }
+  .err { color: var(--danger); font-size: 12px; padding: 3px 10px; word-break: break-word; }
   .foot { padding: 6px 10px; border-top: 1px solid var(--border); }
   .foot button { font-size: 12px; }
 </style>

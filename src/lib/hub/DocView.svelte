@@ -27,7 +27,7 @@
     overflow-x: auto;
   }
   .doc :global(code) {
-    font-family: var(--mono, monospace);
+    font-family: var(--font-mono);
   }
   .doc :global(a) {
     color: var(--accent);

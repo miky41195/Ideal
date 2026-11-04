@@ -12,7 +12,7 @@ export const baseTheme = (fontSize: number, fontFamily: string, extra: Record<st
       maxHeight: '40vh',
       maxWidth: 'min(640px, 60vw)',
       overflow: 'auto',
-      fontSize: '12.5px',
+      fontSize: '12px',
     },
     '.cm-scroller': { fontFamily, lineHeight: '1.5' },
     '.cm-content': { caretColor: 'var(--accent)' },
