@@ -51,7 +51,7 @@
     margin: 0 var(--gap) var(--gap);
     padding: 4px 10px;
     background: var(--panel);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
     box-shadow: var(--shadow-block);
     font-size: 12px;
   }

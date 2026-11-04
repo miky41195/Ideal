@@ -18,6 +18,9 @@ pub enum PtyKind {
         resume: Option<String>,
         #[serde(default)]
         continue_last: bool,
+        /// Fixed id for a new session, so its transcript can be found later.
+        #[serde(default)]
+        session_id: Option<String>,
     },
     Shell {
         program: Option<String>,
@@ -49,13 +52,13 @@ pub fn session_markers(keys: impl Iterator<Item = String>) -> Vec<String> {
 /// Turn a `PtyKind` into a concrete launch. `.cmd`/`.bat` go through `cmd.exe /c`.
 pub fn launch_for(kind: &PtyKind) -> Result<Launch, String> {
     match kind {
-        PtyKind::Claude { resume, continue_last } => {
-            if let Some(id) = resume {
-                if id.is_empty()
-                    || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-                {
-                    return Err("resume id non valido".to_string());
-                }
+        PtyKind::Claude { resume, continue_last, session_id } => {
+            let safe = |id: &str| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            if resume.as_deref().is_some_and(|id| !safe(id)) {
+                return Err("resume id non valido".to_string());
+            }
+            if session_id.as_deref().is_some_and(|id| !safe(id)) {
+                return Err("session id non valido".to_string());
             }
             let exe = claude::resolve_claude(None).map_err(|e| e.to_string())?;
             let mut args = Vec::new();
@@ -64,6 +67,10 @@ pub fn launch_for(kind: &PtyKind) -> Result<Launch, String> {
             }
             if let Some(id) = resume {
                 args.push("--resume".to_string());
+                args.push(id.clone());
+            }
+            if let Some(id) = session_id {
+                args.push("--session-id".to_string());
                 args.push(id.clone());
             }
             Ok(wrap_script(exe, args))
@@ -611,10 +618,12 @@ mod tests {
 
     #[test]
     fn resume_id_validated() {
-        let bad = PtyKind::Claude { resume: Some("a b; calc".into()), continue_last: false };
+        let bad = PtyKind::Claude { resume: Some("a b; calc".into()), continue_last: false, session_id: None };
         assert_eq!(launch_for(&bad).unwrap_err(), "resume id non valido");
-        let empty = PtyKind::Claude { resume: Some("".into()), continue_last: false };
+        let empty = PtyKind::Claude { resume: Some("".into()), continue_last: false, session_id: None };
         assert_eq!(launch_for(&empty).unwrap_err(), "resume id non valido");
+        let sid = PtyKind::Claude { resume: None, continue_last: false, session_id: Some("a b; calc".into()) };
+        assert_eq!(launch_for(&sid).unwrap_err(), "session id non valido");
     }
 
     #[test]

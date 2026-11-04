@@ -12,6 +12,8 @@
   import NotesPanel from '../notes/NotesPanel.svelte';
   import Icon from '../ui/Icon.svelte';
   import { BLOCK_META } from './meta';
+  import { claudeUsage } from '../claude/usage.svelte';
+  import { formatTokens } from '../claude/tokens';
   import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
 
   let { project }: { project: string } = $props();
@@ -71,6 +73,14 @@
         node.removeEventListener('scroll', cue);
       },
     };
+  }
+
+  function usageHint(context: number | null, draft: number): string {
+    const n = (v: number) => v.toLocaleString('it-IT');
+    const msg = draft ? `circa ${n(draft)} token di messaggio (stima)` : '';
+    if (context === null) return `Primo messaggio: ${msg}, più il contesto iniziale di Claude.`;
+    const base = `Al prossimo invio Claude rilegge circa ${n(context)} token di conversazione, in gran parte dalla cache`;
+    return msg ? `${base}, più ${msg}.` : `${base}.`;
   }
 
   function pick(b: BlockId) {
@@ -216,6 +226,11 @@
         {/each}
         </div>
         {#if group.active === 'claude'}
+          {#if (claudeUsage.context !== null || claudeUsage.draft > 0) && rect.w > 460}
+            <span class="usage" title={usageHint(claudeUsage.context, claudeUsage.draft)}>
+              {#if claudeUsage.context !== null}{formatTokens(claudeUsage.context)} contesto{/if}{#if claudeUsage.draft}<b>+ ~{formatTokens(claudeUsage.draft)}</b>{/if}
+            </span>
+          {/if}
           <button class="act text" title="costa più token; claude-mem dà già il contesto" onclick={() => ws.addClaudeTab('continue')}>Riprendi ultima</button>
           <button class="act" title="Nuova sessione (Ctrl+Maiusc+T)" aria-label="Nuova sessione" onclick={() => ws.addClaudeTab('new')}><Icon name="plus" size={14} /></button>
         {:else if group.active === 'terminal'}
@@ -343,6 +358,19 @@
   }
   .tabs:global(.more) {
     mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
+  .usage {
+    flex: none;
+    margin: 0 4px;
+    color: var(--text-dim);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .usage b {
+    margin-left: 6px;
+    color: var(--accent);
+    white-space: nowrap;
+    font-weight: 600;
   }
   .act {
     display: grid;

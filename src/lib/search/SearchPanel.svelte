@@ -153,7 +153,7 @@
   }
   .tg {
     padding: 2px 5px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-dim);
     border-radius: var(--radius-s);
   }
@@ -163,7 +163,7 @@
   }
   .msg {
     padding: 2px 12px 6px;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-dim);
   }
   .msg.err {
@@ -184,7 +184,7 @@
   }
   .n {
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: 12px;
   }
   .row { margin: 0 4px; border-radius: var(--radius-s);
     display: flex;
@@ -192,7 +192,7 @@
     width: calc(100% - 8px);
     text-align: left;
     padding: 2px 12px 2px 20px;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-dim);
     background: none;
     border: 0;

@@ -4,7 +4,7 @@ import type { LspState } from './lsp-manager.svelte';
 export function lspStatusText(state: LspState | undefined, languageName: string): string | null {
   switch (state) {
     case 'ready':
-      return `LSP: ${languageName} ✓`;
+      return `LSP: ${languageName} attivo`;
     case 'starting':
       return 'LSP: avvio…';
     case 'missing':

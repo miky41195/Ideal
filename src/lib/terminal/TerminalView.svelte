@@ -12,6 +12,8 @@
   import { workspace as ws } from '../state/workspace.svelte';
   import { terminalShouldCapture } from '../keys/gate';
   import { xtermTheme } from '../theme/themes';
+  import { debounce } from './activity';
+  import { extractDraft, type ScreenRow } from '../claude/tokens';
   import { themeState } from '../theme/theme-state.svelte';
 
   let {
@@ -21,6 +23,7 @@
     onexit,
     onerror,
     onspawn,
+    ondraft,
   }: {
     kind: PtyKind;
     cwd: string;
@@ -28,6 +31,8 @@
     onexit?: (code: number | null) => void;
     onerror?: (msg: string) => void;
     onspawn?: (ptyId: number) => void;
+    /** Called with the text in Claude's input box after the screen settles. */
+    ondraft?: (text: string) => void;
   } = $props();
 
   let host: HTMLDivElement;
@@ -45,6 +50,19 @@
     if (d.cols === lastSent.cols && d.rows === lastSent.rows) return;
     lastSent = d;
     resizePty(ptyId, d.cols, d.rows).catch((e) => console.warn('pty_resize failed', e));
+  }
+
+  function screenRows(t: Terminal): ScreenRow[] {
+    const b = t.buffer.active;
+    const rows: ScreenRow[] = [];
+    for (let y = b.baseY; y < b.baseY + t.rows; y++) {
+      const line = b.getLine(y);
+      if (!line) continue;
+      const text = line.translateToString(true);
+      const x = text.search(/[^\s>│]/);
+      rows.push({ text, dim: x >= 0 && !!line.getCell(x)?.isDim() });
+    }
+    return rows;
   }
 
   onMount(() => {
@@ -121,8 +139,15 @@
     const ro = new ResizeObserver(() => refit());
     ro.observe(host);
 
+    const scanDraft = debounce(() => {
+      if (ondraft && !destroyed) ondraft(extractDraft(screenRows(t)));
+    }, 200);
+    const offParsed = t.onWriteParsed(scanDraft);
+
     return () => {
       destroyed = true;
+      scanDraft.cancel();
+      offParsed.dispose();
       ro.disconnect();
       if (ptyId !== null) killPty(ptyId).catch(() => {});
       ptyId = null;

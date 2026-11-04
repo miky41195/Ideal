@@ -248,7 +248,7 @@
   .head { padding: 0 8px 6px; display: flex; flex-direction: column; gap: 6px; }
   .branch { position: relative; }
   .bbtn { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; text-align: left; background: var(--panel-2); border-color: var(--border); padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .drop { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 220px; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-s); display: flex; flex-direction: column; }
+  .drop { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 220px; overflow: auto; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow-pop); border-radius: var(--radius-s); display: flex; flex-direction: column; }
   .drop button { text-align: left; padding: 4px 8px; border-radius: 0; }
   .drop button:hover { background: var(--panel-2); }
   .drop .cur { color: var(--accent); }
@@ -256,12 +256,10 @@
   .remote { display: flex; gap: 4px; align-items: center; }
   .remote button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 2px; padding: 3px 4px; border-color: var(--border); }
   .remote button:hover:not(:disabled) { background: var(--panel-2); }
-  button:disabled { opacity: 0.45; cursor: default; }
   .spin { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; }
   @keyframes s { to { transform: rotate(360deg); } }
   .commit { padding: 0 8px 6px; display: flex; flex-direction: column; gap: 4px; }
   textarea { resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 5px 6px; font: inherit; }
-  textarea:focus, .drop input:focus { outline: 1px solid var(--accent); }
   .primary { background: var(--accent); color: var(--accent-fg); font-weight: 600; padding: 4px; }
   .primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
   .list { flex: 1; overflow: auto; }
@@ -277,7 +275,6 @@
   .lq { color: var(--text-dim); }
   .acts { display: none; gap: 2px; margin-left: auto; }
   .row:hover .acts, .row:focus-within .acts { display: flex; }
-  .row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .icon { padding: 0 6px; line-height: 18px; }
   .icon:hover { background: var(--panel-2); }
 </style>

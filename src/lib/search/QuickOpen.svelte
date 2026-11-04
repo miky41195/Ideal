@@ -145,7 +145,7 @@
     color: var(--text);
     padding: 5px 10px;
     border-radius: var(--radius-s);
-    font-size: 12.5px;
+    font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;

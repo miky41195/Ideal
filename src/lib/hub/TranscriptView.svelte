@@ -99,7 +99,7 @@
   .bubble {
     max-width: 80%;
     padding: 6px 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-s);
     background: var(--panel-2);
     line-height: 1.5;
   }

@@ -1,7 +1,7 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 
 export type PtyKind =
-  | { type: 'Claude'; resume: string | null; continue_last: boolean }
+  | { type: 'Claude'; resume: string | null; continue_last: boolean; session_id?: string | null }
   | { type: 'Shell'; program: string | null };
 
 interface ExitPayload {
