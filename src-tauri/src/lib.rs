@@ -39,6 +39,7 @@ pub fn run() {
             fs_cmds::gitignore_add,
             git::ops::git_is_ignored,
             git::status::git_status,
+            git::status::git_toplevel,
             git::ops::git_stage,
             git::ops::git_unstage,
             git::ops::git_discard,

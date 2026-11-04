@@ -1,6 +1,6 @@
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { gitStatus, gitWatch, type RepoStatus } from './git-client';
+import { gitStatus, gitWatch, gitToplevel, type RepoStatus } from './git-client';
 
 const msg = (e: unknown) => (typeof e === 'string' ? e : e instanceof Error ? e.message : String(e));
 
@@ -102,7 +102,7 @@ export async function initGit(projectPath: string): Promise<() => void> {
   }
   await git.refresh();
   try {
-    await gitWatch(projectPath);
+    await gitWatch(git.path);
   } catch (e) {
     console.warn('git watch failed', e);
   }

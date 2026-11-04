@@ -122,6 +122,23 @@ pub fn git_status(path: String) -> Result<RepoStatus, String> {
     status_impl(Path::new(&path))
 }
 
+/// Root of the repo containing `path` (OS separators), or None outside a repo.
+/// The Git panel works at the repo root so status paths and diffs line up when the
+/// project is a subfolder of a repository.
+pub fn toplevel_impl(path: &Path) -> Option<String> {
+    let out = runner::git_read(path, &["rev-parse", "--show-toplevel"]).ok()?;
+    let top = out.trim();
+    if top.is_empty() {
+        return None;
+    }
+    Some(if cfg!(windows) { top.replace('/', "\\") } else { top.to_string() })
+}
+
+#[tauri::command(async)]
+pub fn git_toplevel(path: String) -> Option<String> {
+    toplevel_impl(Path::new(&path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +180,20 @@ mod tests {
         assert_eq!(s.files.len(), 1);
         assert_eq!(s.files[0].group, "conflict");
         assert_eq!(s.files[0].path, "conf.txt");
+    }
+
+    #[test]
+    fn toplevel_from_subfolder_and_outside() {
+        let d = test_repo();
+        let sub = d.path().join("app").join("src");
+        std::fs::create_dir_all(&sub).unwrap();
+        let top = toplevel_impl(&sub).expect("inside repo");
+        let want = std::fs::canonicalize(d.path()).unwrap();
+        let got = std::fs::canonicalize(&top).unwrap();
+        assert_eq!(got, want);
+        assert!(!top.contains('/') || !cfg!(windows));
+        let outside = tempfile::tempdir().unwrap();
+        assert_eq!(toplevel_impl(outside.path()), None);
     }
 
     #[test]

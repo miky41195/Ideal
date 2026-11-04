@@ -82,4 +82,6 @@ export const gitHeatmap = (path: string, allAuthors: boolean) =>
   invoke<Heatmap>('git_heatmap', { path, allAuthors });
 export const gitDayCommits = (path: string, date: string, allAuthors: boolean) =>
   invoke<CommitInfo[]>('git_day_commits', { path, date, allAuthors });
+/** Repo root containing `path` (null outside a repo). */
+export const gitToplevel = (path: string) => invoke<string | null>('git_toplevel', { path });
 export const gitWatch = (path: string) => invoke<void>('git_watch', { path });
