@@ -11,6 +11,8 @@ export const BLOCK_META: Record<CoreBlock, { label: string; icon: IconName }> = 
   search: { label: 'Cerca', icon: 'search' },
   notes: { label: 'Note', icon: 'note' },
   hub: { label: 'Hub', icon: 'layers' },
+  commands: { label: 'Comandi', icon: 'play' },
+  preview: { label: 'Anteprima', icon: 'globe' },
 };
 
 /** `terminal:2` reads "Terminale 2". */

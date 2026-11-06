@@ -14,6 +14,8 @@
   import Icon from '../ui/Icon.svelte';
   import { blockMeta } from './meta';
   import SideEditor from '../editor/SideEditor.svelte';
+  import PreviewBlock from '../preview/PreviewBlock.svelte';
+  import CommandsPanel from '../runner/CommandsPanel.svelte';
   import TerminalView from '../terminal/TerminalView.svelte';
   import { claudeUsage } from '../claude/usage.svelte';
   import { contextLevel, formatTokens } from '../claude/tokens';
@@ -326,7 +328,9 @@
   {#each blocks as b (b)}
     {@const shown = dock.visible(b)}
     <div class="body" class:off={!shown} data-block={b} style={box(b)} onfocusin={() => focusIn(b)} onpointerdowncapture={() => focusIn(b)} role="presentation">
-      {#if isExtra(b) && kindOf(b) === 'terminal'}
+      {#if kindOf(b) === 'preview'}
+        <PreviewBlock block={b} visible={shown} />
+      {:else if isExtra(b) && kindOf(b) === 'terminal'}
         <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} cwd={project} visible={shown} />
       {:else if isExtra(b)}
         <SideEditor visible={shown} projectRoot={project} />
@@ -350,6 +354,8 @@
             <NotesPanel projectPath={project} />
           {:else if b === 'hub'}
             <HubPanel projectPath={project} />
+          {:else if b === 'commands'}
+            <CommandsPanel projectPath={project} />
           {/if}
         </div>
       {/if}

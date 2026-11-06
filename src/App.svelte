@@ -58,6 +58,9 @@
     bus('toggleMode', 'Passa a Claude / Editor', 'toggleMode'),
     { id: 'addTerminal', label: 'Aggiungi blocco Terminale', run: () => void dock.add('terminal') },
     { id: 'addEditor', label: 'Dividi editor (aggiungi blocco Editor)', run: () => void dock.add('editor') },
+    { id: 'addPreview', label: 'Aggiungi blocco Anteprima', run: () => void dock.add('preview') },
+    showView('showCommands', 'Mostra Comandi', 'commands'),
+    showView('showPreview', 'Mostra Anteprima', 'preview'),
     bus('togglePanel', 'Mostra/nascondi terminale', 'togglePanel'),
     bus('newClaudeTab', 'Nuova tab Claude', 'newClaudeTab'),
     {

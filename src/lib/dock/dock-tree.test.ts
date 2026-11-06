@@ -180,17 +180,17 @@ describe('placeTab', () => {
 
   it('moves a tab forward within its group', () => {
     const r = placeTab(defaultLayout(), 'explorer', 'g1', 3);
-    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'explorer', 'search', 'notes', 'hub']);
+    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'explorer', 'search', 'notes', 'hub', 'commands', 'preview']);
   });
 
   it('moves a tab back within its group', () => {
     const r = placeTab(defaultLayout(), 'hub', 'g1', 1);
-    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'hub', 'git', 'changes', 'search', 'notes']);
+    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'hub', 'git', 'changes', 'search', 'notes', 'commands', 'preview']);
   });
 
   it('moves a tab to the end when the slot is past the last tab', () => {
-    const r = placeTab(defaultLayout(), 'explorer', 'g1', 6);
-    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'search', 'notes', 'hub', 'explorer']);
+    const r = placeTab(defaultLayout(), 'explorer', 'g1', 8);
+    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'search', 'notes', 'hub', 'commands', 'preview', 'explorer']);
   });
 
   it('activates the moved tab', () => {
@@ -206,7 +206,7 @@ describe('placeTab', () => {
 
   it('activates a tab dropped next to itself without reordering', () => {
     const r = placeTab(defaultLayout(), 'git', 'g1', 1);
-    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'git', 'changes', 'search', 'notes', 'hub']);
+    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'git', 'changes', 'search', 'notes', 'hub', 'commands', 'preview']);
     expect(allGroups(r).find((g) => g.id === 'g1')!.active).toBe('git');
   });
 

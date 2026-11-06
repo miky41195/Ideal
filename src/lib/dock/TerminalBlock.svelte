@@ -10,8 +10,10 @@
   import { dock } from './dock.svelte';
   let { cwd, visible }: { cwd: string; visible: boolean } = $props();
 
+  const ENTER = String.fromCharCode(13);
+
   function runOnce(run: string | undefined, id: number) {
-    if (run) writePty(id, `${toPtyText(run)}`).catch((e) => console.warn('pty_write failed', e));
+    if (run) writePty(id, toPtyText(run) + ENTER).catch((e) => console.warn('pty_write failed', e));
   }
 
   onMount(() =>

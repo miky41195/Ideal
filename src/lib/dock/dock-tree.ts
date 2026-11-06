@@ -1,7 +1,7 @@
 /** Pure layout model for the block workspace: a tree of splits whose leaves are tab groups. */
 
-export const ALL_BLOCKS = ['claude', 'editor', 'terminal', 'explorer', 'git', 'changes', 'search', 'notes', 'hub'] as const;
-export const EXTRA_KINDS = ['terminal', 'editor'] as const;
+export const ALL_BLOCKS = ['claude', 'editor', 'terminal', 'explorer', 'git', 'changes', 'search', 'notes', 'hub', 'commands', 'preview'] as const;
+export const EXTRA_KINDS = ['terminal', 'editor', 'preview'] as const;
 export type ExtraKind = (typeof EXTRA_KINDS)[number];
 export type CoreBlock = (typeof ALL_BLOCKS)[number];
 /** Core blocks exist once; extra ones are added and closed by the user, as `terminal:2`. */
@@ -57,7 +57,7 @@ export function defaultLayout(): DockNode {
     dir: 'row',
     sizes: [0.22, 0.78],
     children: [
-      { type: 'group', id: 'g1', blocks: ['explorer', 'git', 'changes', 'search', 'notes', 'hub'], active: 'explorer' },
+      { type: 'group', id: 'g1', blocks: ['explorer', 'git', 'changes', 'search', 'notes', 'hub', 'commands', 'preview'], active: 'explorer' },
       {
         type: 'split',
         dir: 'col',
@@ -86,7 +86,7 @@ export const PRESETS: { id: string; label: string; build: () => DockNode }[] = [
       dir: 'row',
       sizes: [0.22, 0.48, 0.3],
       children: [
-        { type: 'group', id: 'g1', blocks: ['changes', 'git', 'explorer', 'search', 'notes', 'hub'], active: 'changes' },
+        { type: 'group', id: 'g1', blocks: ['changes', 'git', 'explorer', 'search', 'notes', 'hub', 'commands', 'preview'], active: 'changes' },
         { type: 'group', id: 'g2', blocks: ['editor'], active: 'editor' },
         {
           type: 'split',
