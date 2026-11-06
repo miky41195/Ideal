@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { ask } from '@tauri-apps/plugin-dialog';
   import { onCommand } from '../commands';
   import { tabs } from '../editor/tabs.svelte';
   import { workspace as ws } from '../state/workspace.svelte';
   import { projectSearch } from './search-client';
+  import { readTextFile, writeTextFile } from '../fs-client';
+  import { showToast } from '../ui/toast.svelte';
+  import { replaceMatches } from './replace';
   import { groupMatches, createLatest, locateInLine, type Match } from './group';
 
   let { projectPath }: { projectPath: string } = $props();
@@ -17,6 +21,8 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
   let searched = $state(false);
+  let replacement = $state('');
+  let replacing = $state(false);
   let input: HTMLInputElement | undefined = $state();
   const latest = createLatest();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,6 +73,54 @@
 
   const abs = (rel: string) => `${projectPath.replace(/[\\/]+$/, '')}\\${rel.replace(/\//g, '\\')}`;
 
+  const sameFile = (a: string, b: string) => a.replace(/\//g, '\\').toLowerCase() === b.toLowerCase();
+
+  /** An open file changes in its buffer and waits for a save; the others are written now. */
+  async function replaceInFile(path: string, items: Match[]) {
+    const open = tabs.tabs.find((t) => (t.kind ?? 'file') === 'file' && sameFile(t.path, path));
+    if (open) {
+      if (open.readonly) return { done: 0, skipped: items.length, unsaved: false };
+      const r = replaceMatches(open.content, items, replacement);
+      if (r.done) tabs.setContent(open.path, r.text);
+      return { ...r, unsaved: r.done > 0 };
+    }
+    const file = await readTextFile(path);
+    if (file.readonly) return { done: 0, skipped: items.length, unsaved: false };
+    const r = replaceMatches(file.content, items, replacement);
+    if (r.done) await writeTextFile(path, r.text, file.eol);
+    return { ...r, unsaved: false };
+  }
+
+  async function replaceAll() {
+    const count = `${matches.length} risultati in ${groups.length} file`;
+    const limit = truncated ? ' La ricerca è troncata: gli altri resteranno da sostituire.' : '';
+    const ok = await ask(`Sostituire ${count} con "${replacement}"? I file non aperti vengono scritti subito.${limit}`, { title: 'Ideal', kind: 'warning' });
+    if (!ok) return;
+    replacing = true;
+    let done = 0;
+    let skipped = 0;
+    let unsaved = 0;
+    const failed: string[] = [];
+    for (const g of groups) {
+      try {
+        const r = await replaceInFile(abs(g.path), g.items);
+        done += r.done;
+        skipped += r.skipped;
+        if (r.unsaved) unsaved++;
+      } catch {
+        skipped += g.items.length;
+        failed.push(g.path);
+      }
+    }
+    replacing = false;
+    const notes = [`${done} sostituiti`];
+    if (skipped) notes.push(`${skipped} saltati`);
+    if (unsaved) notes.push(`${unsaved} file aperti da salvare`);
+    if (failed.length) notes.push(`errore su ${failed.join(', ')}`);
+    showToast(notes.join(' · '));
+    void run();
+  }
+
   async function go(m: Match) {
     const path = abs(m.path);
     await tabs.openFile(path);
@@ -110,6 +164,12 @@
     <button class="tg" class:on={regex} title="Espressione regolare" aria-pressed={regex} onclick={() => toggle('regex')}>.*</button>
     <button class="tg" class:on={wholeWord} title="Parola intera" aria-pressed={wholeWord} onclick={() => toggle('word')}>ab</button>
   </div>
+  {#if matches.length}
+    <div class="bar">
+      <input bind:value={replacement} placeholder="Sostituisci con…" aria-label="Sostituisci con" spellcheck="false" />
+      <button class="tg go" disabled={replacing} title="Sostituisci tutti i risultati" onclick={() => void replaceAll()}>Sostituisci</button>
+    </div>
+  {/if}
   {#if error}
     <div class="msg err">{error}</div>
   {:else if searched}
@@ -160,6 +220,10 @@
   .tg.on {
     color: var(--text);
     background: var(--accent-soft);
+  }
+  .go {
+    width: auto;
+    padding: 0 8px;
   }
   .msg {
     padding: 2px 12px 6px;

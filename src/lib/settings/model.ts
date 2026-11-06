@@ -1,6 +1,6 @@
 export interface Settings {
   terminal: { shell: string | null; fontSize: number };
-  editor: { fontSize: number; tabSize: number; fontFamily: string };
+  editor: { fontSize: number; tabSize: number; fontFamily: string; minimap: boolean };
   theme: string;
   claudeMem: { port: number };
   /** `notify`: call back when Claude finishes or waits. `contextWarn`: tokens that colour the readout, 0 turns it off. */
@@ -17,7 +17,7 @@ export interface SettingsPayload {
 
 export const DEFAULT_SETTINGS: Settings = {
   terminal: { shell: null, fontSize: 13 },
-  editor: { fontSize: 14, tabSize: 2, fontFamily: 'Cascadia Code, Consolas, monospace' },
+  editor: { fontSize: 14, tabSize: 2, fontFamily: 'Cascadia Code, Consolas, monospace', minimap: true },
   theme: 'ideal-dark',
   claudeMem: { port: 37777 },
   claude: { notify: true, contextWarn: 200000 },

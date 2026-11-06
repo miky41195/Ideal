@@ -1,6 +1,6 @@
 {
   "terminal": { "shell": null, "fontSize": 13 },
-  "editor": { "fontSize": 14, "tabSize": 2, "fontFamily": "Cascadia Code, Consolas, monospace" },
+  "editor": { "fontSize": 14, "tabSize": 2, "fontFamily": "Cascadia Code, Consolas, monospace", "minimap": true },
   "theme": "ideal-dark",
   "claudeMem": { "port": 37777 },
   "claude": { "notify": true, "contextWarn": 200000 },

@@ -22,6 +22,7 @@
     indentUnit,
   } from '@codemirror/language';
   import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
+  import { showMinimap } from '@replit/codemirror-minimap';
   import { baseTheme, highlightingExt } from './theme';
   import { languageFor } from './languages';
   import { settings } from '../settings/settings.svelte';
@@ -64,6 +65,7 @@
   const look = new Compartment();
   const indent = new Compartment();
   const lspComp = new Compartment();
+  const mini = new Compartment();
   /** Paths whose cached EditorState already carries its LSP plugin (no reconnect on tab switch). */
   const lspAttached = new Set<string>();
   let currentPath: string | null = null;
@@ -84,6 +86,11 @@
     EditorState.tabSize.of(settings.value.editor.tabSize),
     indentUnit.of(' '.repeat(settings.value.editor.tabSize)),
   ];
+
+  const miniExt = () =>
+    settings.value.editor.minimap
+      ? showMinimap.of({ create: () => ({ dom: document.createElement('div') }), displayText: 'blocks', showOverlay: 'always' })
+      : [];
 
   let cursorFrame = 0;
   function scheduleCursor(v: EditorView) {
@@ -129,6 +136,7 @@
       ]),
       ...highlightingExt,
       look.of(lookExt()),
+      mini.of(miniExt()),
       lang.of([]),
       lspComp.of([]),
       EditorState.readOnly.of(t.readonly),
@@ -228,9 +236,9 @@
   // Live settings: reconfigure the visible state now; stored states keep undo history.
   $effect(() => {
     const e = settings.value.editor;
-    void [e.fontSize, e.fontFamily, e.tabSize];
+    void [e.fontSize, e.fontFamily, e.tabSize, e.minimap];
     if (!view) return;
-    const effects = [look.reconfigure(lookExt()), indent.reconfigure(indentExt())];
+    const effects = [look.reconfigure(lookExt()), indent.reconfigure(indentExt()), mini.reconfigure(miniExt())];
     view.dispatch({ effects });
     for (const [p, st] of states) {
       if (p !== currentPath) states.set(p, st.update({ effects }).state);
