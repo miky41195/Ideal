@@ -29,6 +29,7 @@
   const GAP = 6;
   const HEAD = 32;
   const EDGE = 16;
+  const SLOT_REACH = 24;
 
   let el: HTMLDivElement;
   let w = $state(0);
@@ -109,10 +110,27 @@
   }
 
   // ---- drag a tab to rearrange ----
-  let drag = $state<{ block: BlockId; x: number; y: number; target: string | null; zone: Zone; rect: Rect | null } | null>(null);
+  let drag = $state<{ block: BlockId; x: number; y: number; target: string | null; zone: Zone; slot: number | null; rect: Rect | null } | null>(null);
   let justDragged = false;
 
-  function hitTest(x: number, y: number): { target: string; zone: Zone; rect: Rect } | null {
+  /** Over a tab strip: the gap between tabs the pointer is nearest to. Past the tabs the header stays a normal drop area. */
+  function tabSlot(x: number, y: number): { target: string; zone: Zone; slot: number; rect: Rect } | null {
+    const g = L.groups.find(({ rect: r }) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + HEAD);
+    if (!g) return null;
+    const left = el.getBoundingClientRect().left;
+    const tabs = [...el.querySelectorAll(`[data-strip="${g.group.id}"] .tab`)].map((t) => t.getBoundingClientRect());
+    const last = tabs.at(-1);
+    if (!last || x > last.right - left + SLOT_REACH) return null;
+    const found = tabs.findIndex((t) => x + left < t.left + t.width / 2);
+    const slot = found < 0 ? tabs.length : found;
+    const gap = (found < 0 ? last.right : tabs[slot].left) - left;
+    const r = g.rect;
+    return { target: g.group.id, zone: 'center', slot, rect: { x: Math.max(r.x, Math.min(gap - 1, r.x + r.w - 3)), y: r.y + 4, w: 3, h: HEAD - 8 } };
+  }
+
+  function hitTest(x: number, y: number): { target: string; zone: Zone; slot?: number; rect: Rect } | null {
+    const strip = tabSlot(x, y);
+    if (strip) return strip;
     const edges: [boolean, Zone][] = [
       [x < EDGE, 'left'],
       [x > w - EDGE, 'right'],
@@ -136,26 +154,41 @@
 
   function tabDown(e: PointerEvent, block: BlockId) {
     if (e.button !== 0) return;
+    // A drop lands on the shield, so no click clears this after a drag.
+    justDragged = false;
     const sx = e.clientX;
     const sy = e.clientY;
     const origin = el.getBoundingClientRect();
+    const grip = e.currentTarget as HTMLElement;
+    grip.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
       if (!drag && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
       const x = ev.clientX - origin.left;
       const y = ev.clientY - origin.top;
       const hit = hitTest(x, y);
-      drag = { block, x, y, target: hit?.target ?? null, zone: hit?.zone ?? 'center', rect: hit?.rect ?? null };
+      drag = { block, x, y, target: hit?.target ?? null, zone: hit?.zone ?? 'center', slot: hit?.slot ?? null, rect: hit?.rect ?? null };
     };
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('keydown', key, true);
+      window.removeEventListener('pointercancel', abort);
+      window.removeEventListener('blur', abort);
+      grip.removeEventListener('lostpointercapture', abort);
+    };
+    // The release may never arrive: a lost pointer must not leave the shield over the app.
+    const abort = () => {
+      stop();
+      drag = null;
     };
     const up = () => {
       stop();
       if (!drag) return;
       justDragged = true;
-      if (drag.target) {
+      if (drag.target && drag.slot !== null) {
+        dock.place(block, drag.target, drag.slot);
+        pick(block);
+      } else if (drag.target) {
         dock.move(block, drag.target, drag.zone);
         dock.focused = block;
       }
@@ -164,12 +197,19 @@
     const key = (ev: KeyboardEvent) => {
       if (ev.key !== 'Escape') return;
       ev.stopPropagation();
-      stop();
-      drag = null;
+      abort();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('keydown', key, true);
+    window.addEventListener('pointercancel', abort);
+    window.addEventListener('blur', abort);
+    grip.addEventListener('lostpointercapture', abort);
+  }
+
+  /** The empty part of a block's header drags the block on show; tabs and actions keep their own behaviour. */
+  function headDown(e: PointerEvent, block: BlockId) {
+    if (!(e.target as Element).closest('button')) tabDown(e, block);
   }
 
   function tabClick(b: BlockId) {
@@ -184,6 +224,7 @@
   let resizing = $state<'row' | 'col' | null>(null);
 
   function handleDown(e: PointerEvent, hd: Handle) {
+    if (e.button !== 0) return;
     const start = hd.dir === 'row' ? e.clientX : e.clientY;
     const base = dock.tree;
     const target = e.currentTarget as HTMLElement;
@@ -193,16 +234,23 @@
       const now = hd.dir === 'row' ? ev.clientX : ev.clientY;
       dock.preview(base, hd.path, hd.index, (now - start) / hd.span);
     };
+    // Every way a press can end, or the shield stays up and swallows all clicks.
     const up = () => {
       target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerup', up);
+      target.removeEventListener('lostpointercapture', up);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      window.removeEventListener('blur', up);
       resizing = null;
       const t = dock.tree;
       dock.tree = base;
       dock.commit(t);
     };
     target.addEventListener('pointermove', move);
-    target.addEventListener('pointerup', up);
+    target.addEventListener('lostpointercapture', up);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    window.addEventListener('blur', up);
   }
 
   function handleKey(e: KeyboardEvent, hd: Handle) {
@@ -219,8 +267,10 @@
     {@const compact = rect.w < group.blocks.length * TAB_ROOM}
     {@const tight = rect.w < group.blocks.length * 34 + 90}
     <section class="group" class:focused={group.blocks.includes(dock.focused)} style={place(rect)} aria-label={META[group.active].label}>
-      <div class="head">
-        <div class="tabs" role="tablist" use:tabStrip={group.active}>
+      <!-- Mouse shortcut for the tab drag; the tabs stay the keyboard-reachable controls. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="head" onpointerdown={(e) => headDown(e, group.active)}>
+        <div class="tabs" role="tablist" data-strip={group.id} use:tabStrip={group.active}>
         {#each group.blocks as b (b)}
           <button
             class="tab"
@@ -319,7 +369,7 @@
     <div class="shield" class:row={resizing === 'row'} class:col={resizing === 'col'}></div>
   {/if}
   {#if drag}
-    {#if drag.rect}<div class="drop" style={place(drag.rect)}></div>{/if}
+    {#if drag.rect}<div class="drop" class:slot={drag.slot !== null} style={place(drag.rect)}></div>{/if}
     <div class="ghost" style="left:{drag.x + 12}px;top:{drag.y + 12}px">
       <Icon name={META[drag.block].icon} size={14} />{META[drag.block].label}
     </div>
@@ -348,8 +398,11 @@
     gap: 2px;
     height: var(--head);
     padding: 0 5px;
+    cursor: grab;
+    touch-action: none;
   }
   .tab {
+    cursor: grab;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -487,6 +540,12 @@
       top 120ms var(--ease),
       width 120ms var(--ease),
       height 120ms var(--ease);
+  }
+  .drop.slot {
+    background: var(--accent);
+    border: 0;
+    border-radius: 2px;
+    transition: none;
   }
   .ghost {
     position: absolute;
