@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LspManager, IDLE_MS, type LspDeps, type ClientLike } from './lsp-manager.svelte';
+import { LspManager, IDLE_MS, INSTALL_WAIT_MS, type LspDeps, type ClientLike } from './lsp-manager.svelte';
 
 const bs = String.fromCharCode(92);
 const P = (name: string) => ['C:', 'p', name].join(bs);
@@ -33,6 +33,7 @@ function setup(startImpl?: LspDeps['start']) {
       return c as unknown as ClientLike;
     }),
     notify: vi.fn(),
+    available: vi.fn(async () => false),
   };
   return { m: new LspManager(deps as unknown as LspDeps), deps, clients, exits };
 }
@@ -264,5 +265,71 @@ describe('saved', () => {
     expect(c.notification).toHaveBeenCalledWith('textDocument/didSave', { textDocument: { uri: 'file:///C:/p/a.ts' } });
     m.saved(P('readme.md'));
     expect(c.notification).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('LspManager install', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const missing = async () => {
+    const s = setup(async () => {
+      throw { missing: true, install: 'npm i -g pyright', command: 'pyright-langserver', message: '' };
+    });
+    await s.m.extensionFor(P('a.py'), ROOT);
+    return s;
+  };
+  const key = 'pyright-langserver';
+
+  it('exposes the install command of a missing server', async () => {
+    const { m } = await missing();
+    expect(m.installCommand(key)).toBe('npm i -g pyright');
+    expect(m.installCommand('nope')).toBeNull();
+  });
+
+  it('runs the command once while an install is pending', async () => {
+    const { m } = await missing();
+    const run = vi.fn();
+    m.install(key, run);
+    m.install(key, run);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('npm i -g pyright');
+    await m.stopAll();
+  });
+
+  it('restarts the server as soon as it is on the PATH', async () => {
+    const { m, deps } = await missing();
+    const tick = m.tick;
+    m.install(key, vi.fn());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(m.state[key]).toBe('missing');
+    deps.available.mockResolvedValue(true);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(m.state[key]).toBeUndefined();
+    expect(m.tick).toBe(tick + 1);
+    deps.available.mockClear();
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(deps.available).not.toHaveBeenCalled();
+  });
+
+  it('gives up after the time limit and allows another try', async () => {
+    const { m, deps } = await missing();
+    const run = vi.fn();
+    m.install(key, run);
+    await vi.advanceTimersByTimeAsync(INSTALL_WAIT_MS + 3000);
+    deps.available.mockClear();
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(deps.available).not.toHaveBeenCalled();
+    m.install(key, run);
+    expect(run).toHaveBeenCalledTimes(2);
+    await m.stopAll();
+  });
+
+  it('stopAll ends the wait', async () => {
+    const { m, deps } = await missing();
+    m.install(key, vi.fn());
+    await m.stopAll();
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(deps.available).not.toHaveBeenCalled();
   });
 });

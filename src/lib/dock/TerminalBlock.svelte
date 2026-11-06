@@ -1,12 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import TerminalView from '../terminal/TerminalView.svelte';
+  import { writePty } from '../terminal/pty-client';
+  import { toPtyText } from '../claude/send-bridge';
   import { settings } from '../settings/settings.svelte';
   import { registerCommands } from '../palette/registry';
   import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
   import Icon from '../ui/Icon.svelte';
   import { dock } from './dock.svelte';
   let { cwd, visible }: { cwd: string; visible: boolean } = $props();
+
+  function runOnce(run: string | undefined, id: number) {
+    if (run) writePty(id, `${toPtyText(run)}`).catch((e) => console.warn('pty_write failed', e));
+  }
 
   onMount(() =>
     registerCommands([
@@ -37,7 +43,7 @@
   <div class="body">
     {#each tt.tabs as t (t.id)}
       <div class="pane" class:off={t.id !== tt.active}>
-        <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} {cwd} visible={visible && t.id === tt.active} />
+        <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} {cwd} visible={visible && t.id === tt.active} onspawn={(id) => runOnce(t.run, id)} />
       </div>
     {/each}
   </div>

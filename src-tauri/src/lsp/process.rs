@@ -342,6 +342,16 @@ pub fn lsp_start<R: Runtime>(
     start_impl(&mgr, window.label(), &language_id, &root, &overrides, &lookup, sink)
 }
 
+/// True when the default server of `language_id` resolves through `lookup`.
+fn available(language_id: &str, lookup: &dyn Fn(&str) -> Option<PathBuf>) -> bool {
+    servers::spec_for(language_id).is_some_and(|s| lookup(s.command).is_some())
+}
+
+#[tauri::command(async)]
+pub fn lsp_available(language_id: String) -> bool {
+    available(&language_id, &|c| which::which(c).ok())
+}
+
 #[tauri::command(async)]
 pub fn lsp_send(mgr: State<'_, LspServers>, server_id: u32, message: String) -> Result<(), String> {
     mgr.send(server_id, &message)
@@ -423,6 +433,15 @@ mod tests {
         assert!(mgr.send(a.server_id, "{}").is_err());
         assert!(mgr.send(c.server_id, "{}").is_ok());
         mgr.stop_owned_by("w2");
+    }
+
+    #[test]
+    fn available_follows_the_lookup() {
+        let found = |_: &str| Some(PathBuf::from("x"));
+        let none = |_: &str| None;
+        assert!(available("python", &found));
+        assert!(!available("python", &none));
+        assert!(!available("cobol", &found));
     }
 
     #[test]

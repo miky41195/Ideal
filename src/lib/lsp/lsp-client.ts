@@ -21,6 +21,11 @@ export interface MessageSource {
 
 const EXIT_METHOD = '$/ideal/exit';
 
+/** True when the default server of this language can be found on the PATH. */
+export function serverAvailable(languageId: string): Promise<boolean> {
+  return invoke<boolean>('lsp_available', { languageId });
+}
+
 /**
  * Transport over the Tauri channel. The Rust side appends a synthetic `$/ideal/exit`
  * notification when the server dies: it is reported through `onExit`, never forwarded.

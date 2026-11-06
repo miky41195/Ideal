@@ -7,9 +7,12 @@ import { showToast } from '../ui/toast.svelte';
 import { languageIdFor, serverKeyFor } from './lang';
 import { pathToUri } from './uri';
 import { pullDiagnostics } from './pull-diagnostics';
-import { startServer, stopServer, type LspStartError } from './lsp-client';
+import { serverAvailable, startServer, stopServer, type LspStartError } from './lsp-client';
 
 export const IDLE_MS = 300_000;
+/** How long to keep looking for a server after starting its install. */
+export const INSTALL_WAIT_MS = 600_000;
+const INSTALL_POLL_MS = 3_000;
 
 export type LspState = 'starting' | 'ready' | 'missing' | 'error';
 
@@ -28,6 +31,7 @@ export interface LspDeps {
   stop(serverId: number): Promise<void>;
   createClient(rootUri: string): ClientLike;
   notify(message: string): void;
+  available(languageId: string): Promise<boolean>;
 }
 
 const defaultDeps: LspDeps = {
@@ -44,6 +48,7 @@ const defaultDeps: LspDeps = {
     return client;
   },
   notify: (m) => showToast(m),
+  available: serverAvailable,
 };
 
 interface Entry {
@@ -60,6 +65,7 @@ export class LspManager {
   private refs = new Map<string, number>();
   private noticed = new Set<string>();
   private hints = new Map<string, { languageId: string; install: string }>();
+  private installs = new Map<string, ReturnType<typeof setInterval>>();
   /** Bumped by `retry` so open editors re-request their extension. */
   tick = $state(0);
 
@@ -155,6 +161,32 @@ export class LspManager {
     if (h) this.deps.notify(`Server ${h.languageId} non installato — installa con: ${h.install}`);
   }
 
+  /** The command that installs this missing server, if there is one. */
+  installCommand(key: string): string | null {
+    return this.hints.get(key)?.install || null;
+  }
+
+  /** Hands the install command to `run`, then restarts the server as soon as it is on the PATH. */
+  install(key: string, run: (command: string) => void): void {
+    const hint = this.hints.get(key);
+    if (!hint?.install || this.installs.has(key)) return;
+    run(hint.install);
+    const deadline = Date.now() + INSTALL_WAIT_MS;
+    const check = async () => {
+      if (Date.now() >= deadline) return this.endInstall(key);
+      if (!(await this.deps.available(hint.languageId).catch(() => false)) || !this.installs.has(key)) return;
+      this.endInstall(key);
+      this.retry(key);
+      this.deps.notify(`Server ${hint.languageId} installato`);
+    };
+    this.installs.set(key, setInterval(() => void check(), INSTALL_POLL_MS));
+  }
+
+  private endInstall(key: string): void {
+    clearInterval(this.installs.get(key));
+    this.installs.delete(key);
+  }
+
   /** A file was saved to disk: tell its server (rust-analyzer runs `cargo check` on save). */
   saved(path: string): void {
     const key = this.keyOf(path);
@@ -211,6 +243,7 @@ export class LspManager {
   }
 
   async stopAll(): Promise<void> {
+    for (const key of [...this.installs.keys()]) this.endInstall(key);
     await Promise.all([...this.entries.values()].map((e) => this.stop(e)));
     this.refs.clear();
   }

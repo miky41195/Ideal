@@ -17,6 +17,12 @@ describe('TerminalTabs', () => {
     expect(t.tabs.map((x) => x.title)).toEqual(['pwsh 1', 'pwsh 2']);
     expect(t.active).toBe(t.tabs[1].id);
   });
+  it('keeps a command to run in the new tab', () => {
+    const t = new TerminalTabs(() => 'pwsh');
+    t.add('npm i -g pyright');
+    expect(t.tabs[1].run).toBe('npm i -g pyright');
+    expect(t.tabs[0].run).toBeUndefined();
+  });
   it('never reuses a number', () => {
     const t = new TerminalTabs(() => 'pwsh');
     const two = t.add();

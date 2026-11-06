@@ -10,6 +10,8 @@ export function shellName(program: string | null | undefined): string {
 export interface TerminalTab {
   id: number;
   title: string;
+  /** Typed into the shell once it starts. */
+  run?: string;
 }
 
 export class TerminalTabs {
@@ -21,9 +23,9 @@ export class TerminalTabs {
     this.add();
   }
 
-  add(): number {
+  add(run?: string): number {
     const n = ++this.counter;
-    this.tabs.push({ id: n, title: `${this.name()} ${n}` });
+    this.tabs.push({ id: n, title: `${this.name()} ${n}`, run });
     this.active = n;
     return n;
   }

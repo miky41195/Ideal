@@ -6,6 +6,8 @@
   import { lsp } from '../lsp/lsp-manager.svelte';
   import { languageIdFor, serverKeyFor } from '../lsp/lang';
   import { lspStatusText } from '../lsp/status';
+  import { dock } from '../dock/dock.svelte';
+  import { terminalTabs } from './terminal-tabs.svelte';
   let { mode }: { mode: Mode } = $props();
   const fileTab = $derived(mode === 'editor' && tabs.active && isFileTab(tabs.active) ? tabs.active : null);
   const lspKey = $derived.by(() => {
@@ -16,8 +18,15 @@
   const lspText = $derived(fileTab ? lspStatusText(lspState, languageName(fileTab.path)) : null);
   function lspClick() {
     if (!lspKey) return;
-    if (lspState === 'missing') lsp.showMissing(lspKey);
-    else if (lspState === 'error') lsp.retry(lspKey);
+    if (lspState !== 'missing') {
+      if (lspState === 'error') lsp.retry(lspKey);
+      return;
+    }
+    if (!lsp.installCommand(lspKey)) return lsp.showMissing(lspKey);
+    lsp.install(lspKey, (command) => {
+      dock.show('terminal');
+      terminalTabs.add(command);
+    });
   }
 </script>
 
@@ -27,7 +36,7 @@
     {#if tabs.cursor}<span>Ln {tabs.cursor.line}, Col {tabs.cursor.col}</span>{/if}
     {#if lspText}
       {#if lspState === 'missing' || lspState === 'error'}
-        <button class="lsp" title={lspState === 'missing' ? 'Mostra come installarlo' : 'Riprova ad avviare il server'} onclick={lspClick}>{lspText}</button>
+        <button class="lsp" title={lspState === 'missing' ? `Esegue in un terminale: ${lsp.installCommand(lspKey!) ?? 'comando non disponibile'}` : 'Riprova ad avviare il server'} onclick={lspClick}>{lspText}</button>
       {:else}
         <span>{lspText}</span>
       {/if}

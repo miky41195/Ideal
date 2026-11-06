@@ -8,7 +8,7 @@ export function lspStatusText(state: LspState | undefined, languageName: string)
     case 'starting':
       return 'LSP: avvio…';
     case 'missing':
-      return 'LSP: non installato';
+      return 'LSP: non installato, clic per installare';
     case 'error':
       return 'LSP: errore';
     default:

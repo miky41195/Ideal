@@ -90,6 +90,7 @@ pub fn run() {
             search::project_files,
             search::project_search,
             lsp::process::lsp_start,
+            lsp::process::lsp_available,
             lsp::process::lsp_send,
             lsp::process::lsp_stop
         ])
