@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ALL_BLOCKS, layoutRects, zoneAt, zoneRect, type BlockId, type Handle, type Rect, type Zone } from './dock-tree';
+  import { ALL_BLOCKS, extraBlocks, isExtra, kindOf, layoutRects, zoneAt, zoneRect, type BlockId, type Handle, type Rect, type Zone } from './dock-tree';
   import { dock } from './dock.svelte';
   import { workspace as ws } from '../state/workspace.svelte';
   import ClaudeTabs from '../claude/ClaudeTabs.svelte';
@@ -12,7 +12,9 @@
   import NotesPanel from '../notes/NotesPanel.svelte';
   import ChangesPanel from '../claude/ChangesPanel.svelte';
   import Icon from '../ui/Icon.svelte';
-  import { BLOCK_META } from './meta';
+  import { blockMeta } from './meta';
+  import SideEditor from '../editor/SideEditor.svelte';
+  import TerminalView from '../terminal/TerminalView.svelte';
   import { claudeUsage } from '../claude/usage.svelte';
   import { contextLevel, formatTokens } from '../claude/tokens';
   import { runInActiveClaude, sendToActiveClaude } from '../claude/send-bridge';
@@ -21,8 +23,6 @@
   import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
 
   let { project }: { project: string } = $props();
-
-  const META = BLOCK_META;
 
   /** Below this width per tab, only the active tab keeps its label. */
   const TAB_ROOM = 86;
@@ -36,6 +36,7 @@
   let h = $state(0);
 
   const L = $derived(layoutRects(dock.tree, { x: 0, y: 0, w, h }, GAP));
+  const blocks = $derived<BlockId[]>([...ALL_BLOCKS, ...extraBlocks(dock.tree)]);
 
   // A hidden block keeps its last box, so terminals are not resized to nothing.
   const lastBox = new Map<BlockId, Rect>();
@@ -106,7 +107,7 @@
 
   function focusIn(b: BlockId) {
     dock.focused = b;
-    if (b === 'claude' || b === 'editor') ws.mode = b;
+    if (b === 'claude' || kindOf(b) === 'editor') ws.mode = b === 'claude' ? 'claude' : 'editor';
   }
 
   // ---- drag a tab to rearrange ----
@@ -266,7 +267,7 @@
   {#each L.groups as { group, rect } (group.id)}
     {@const compact = rect.w < group.blocks.length * TAB_ROOM}
     {@const tight = rect.w < group.blocks.length * 34 + 90}
-    <section class="group" class:focused={group.blocks.includes(dock.focused)} style={place(rect)} aria-label={META[group.active].label}>
+    <section class="group" class:focused={group.blocks.includes(dock.focused)} style={place(rect)} aria-label={blockMeta(group.active).label}>
       <!-- Mouse shortcut for the tab drag; the tabs stay the keyboard-reachable controls. -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="head" onpointerdown={(e) => headDown(e, group.active)}>
@@ -279,12 +280,12 @@
             class:slim={compact}
             role="tab"
             aria-selected={b === group.active}
-            title="{META[b].label} (trascina per spostare)"
+            title="{blockMeta(b).label} (trascina per spostare)"
             onpointerdown={(e) => tabDown(e, b)}
             onclick={() => tabClick(b)}
           >
-            <Icon name={META[b].icon} size={14} />
-            {#if !compact || (b === group.active && !tight)}<span>{META[b].label}</span>{/if}
+            <Icon name={blockMeta(b).icon} size={14} />
+            {#if !compact || (b === group.active && !tight)}<span>{blockMeta(b).label}</span>{/if}
             {#if b === 'claude' && ws.needsAttention}<i class="dot" title="Claude ti aspetta"></i>{/if}
           </button>
         {/each}
@@ -311,6 +312,9 @@
         {:else if group.active === 'terminal'}
           <button class="act" title="Nuovo terminale" aria-label="Nuovo terminale" onclick={() => tt.add()}><Icon name="plus" size={14} /></button>
         {/if}
+        {#if isExtra(group.active)}
+          <button class="act" title="Chiudi blocco" aria-label="Chiudi blocco" onclick={() => dock.remove(group.active)}><Icon name="close" size={14} /></button>
+        {/if}
         {#if !group.blocks.includes('claude') && !group.blocks.includes('editor')}
           <button class="act" title="Nascondi blocco" aria-label="Nascondi blocco" onclick={() => dock.collapse(group.id)}><Icon name="minus" size={14} /></button>
         {/if}
@@ -319,10 +323,14 @@
   {/each}
 
   <!-- Every block lives here, flat: moving one only changes its box, so sessions and undo survive. -->
-  {#each ALL_BLOCKS as b (b)}
+  {#each blocks as b (b)}
     {@const shown = dock.visible(b)}
     <div class="body" class:off={!shown} data-block={b} style={box(b)} onfocusin={() => focusIn(b)} onpointerdowncapture={() => focusIn(b)} role="presentation">
-      {#if b === 'claude'}
+      {#if isExtra(b) && kindOf(b) === 'terminal'}
+        <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} cwd={project} visible={shown} />
+      {:else if isExtra(b)}
+        <SideEditor visible={shown} projectRoot={project} />
+      {:else if b === 'claude'}
         <ClaudeTabs {ws} cwd={project} visible={shown} />
       {:else if b === 'editor'}
         <EditorArea visible={shown} projectRoot={project} />
@@ -371,7 +379,7 @@
   {#if drag}
     {#if drag.rect}<div class="drop" class:slot={drag.slot !== null} style={place(drag.rect)}></div>{/if}
     <div class="ghost" style="left:{drag.x + 12}px;top:{drag.y + 12}px">
-      <Icon name={META[drag.block].icon} size={14} />{META[drag.block].label}
+      <Icon name={blockMeta(drag.block).icon} size={14} />{blockMeta(drag.block).label}
     </div>
   {/if}
 </div>

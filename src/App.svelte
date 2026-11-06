@@ -56,6 +56,8 @@
   });
   const builtins: PaletteCommand[] = [
     bus('toggleMode', 'Passa a Claude / Editor', 'toggleMode'),
+    { id: 'addTerminal', label: 'Aggiungi blocco Terminale', run: () => void dock.add('terminal') },
+    { id: 'addEditor', label: 'Dividi editor (aggiungi blocco Editor)', run: () => void dock.add('editor') },
     bus('togglePanel', 'Mostra/nascondi terminale', 'togglePanel'),
     bus('newClaudeTab', 'Nuova tab Claude', 'newClaudeTab'),
     {

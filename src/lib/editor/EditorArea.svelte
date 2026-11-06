@@ -23,7 +23,10 @@
 
   onMount(() => {
     const offs = [
-      onCommand('save', () => tabs.activePath && void tabs.save(tabs.activePath)),
+      onCommand('save', () => {
+        const path = tabs.focusPath ?? tabs.activePath;
+        if (path) void tabs.save(path);
+      }),
       onCommand('saveAll', () => void tabs.saveAll()),
       onCommand('closeTab', () => tabs.activePath && void close(tabs.activePath)),
     ];

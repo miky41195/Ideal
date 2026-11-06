@@ -1,8 +1,8 @@
 <script lang="ts">
   import { dock } from '../dock/dock.svelte';
-  import { ALL_BLOCKS, PRESETS, type BlockId } from '../dock/dock-tree';
+  import { ALL_BLOCKS, EXTRA_KINDS, PRESETS, extraBlocks, type BlockId, type ExtraKind } from '../dock/dock-tree';
   import { registerCommands } from '../palette/registry';
-  import { BLOCK_META } from '../dock/meta';
+  import { BLOCK_META, blockMeta } from '../dock/meta';
   import Icon from '../ui/Icon.svelte';
 
   let open = $state(false);
@@ -11,6 +11,10 @@
   function pick(b: BlockId) {
     if (dock.canHide(b)) dock.toggle(b);
     else dock.show(b);
+    open = false;
+  }
+  function add(kind: ExtraKind) {
+    dock.add(kind);
     open = false;
   }
   function reset() {
@@ -60,11 +64,18 @@
   </button>
   {#if open}
     <div class="menu" role="menu">
-      {#each ALL_BLOCKS as b (b)}
+      {#each [...ALL_BLOCKS, ...extraBlocks(dock.tree)] as b (b)}
         <button role="menuitemcheckbox" aria-checked={dock.visible(b)} disabled={dock.visible(b) && !dock.canHide(b)} onclick={() => pick(b)}>
-          <Icon name={BLOCK_META[b].icon} size={14} />
-          <span class="name">{BLOCK_META[b].label}</span>
+          <Icon name={blockMeta(b).icon} size={14} />
+          <span class="name">{blockMeta(b).label}</span>
           {#if dock.visible(b)}<Icon name="check" size={14} />{/if}
+        </button>
+      {/each}
+      <hr />
+      {#each EXTRA_KINDS as k (k)}
+        <button role="menuitem" onclick={() => add(k)}>
+          <Icon name="plus" size={14} />
+          <span class="name">Aggiungi {BLOCK_META[k].label}</span>
         </button>
       {/each}
       <hr />

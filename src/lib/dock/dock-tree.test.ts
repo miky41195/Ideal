@@ -3,14 +3,20 @@ import {
   ALL_BLOCKS,
   PRESETS,
   activate,
+  addExtra,
   allGroups,
   defaultLayout,
+  extraBlocks,
   findGroup,
+  isExtra,
   isVisible,
+  keepExtras,
+  kindOf,
   layoutRects,
   moveBlock,
   normalize,
   placeTab,
+  removeBlock,
   resizeAt,
   setCollapsed,
   zoneAt,
@@ -218,6 +224,73 @@ describe('placeTab', () => {
   it('ignores an unknown target', () => {
     const t = defaultLayout();
     expect(placeTab(t, 'git', 'nope', 0)).toBe(t);
+  });
+});
+
+describe('extra blocks', () => {
+  it('recognises extra ids only', () => {
+    expect(isExtra('terminal:2')).toBe(true);
+    expect(isExtra('editor:12')).toBe(true);
+    expect(isExtra('terminal')).toBe(false);
+    expect(isExtra('git:2')).toBe(false);
+    expect(isExtra('terminal:x')).toBe(false);
+    expect(kindOf('terminal:2')).toBe('terminal');
+    expect(kindOf('hub')).toBe('hub');
+  });
+
+  it('adds a block beside the one of its kind', () => {
+    const { tree, block } = addExtra(defaultLayout(), 'terminal');
+    expect(block).toBe('terminal:2');
+    expect(isVisible(tree, block)).toBe(true);
+    expect(isVisible(tree, 'terminal')).toBe(true);
+    expect(findGroup(tree, block)!.id).not.toBe(findGroup(tree, 'terminal')!.id);
+  });
+
+  it('numbers past the highest in use and never collides', () => {
+    const a = addExtra(defaultLayout(), 'terminal');
+    const b = addExtra(a.tree, 'terminal');
+    expect(b.block).toBe('terminal:3');
+    const c = addExtra(removeBlock(b.tree, 'terminal:2'), 'terminal');
+    expect(c.block).toBe('terminal:4');
+    expect(new Set(allGroups(c.tree).map((g) => g.id)).size).toBe(allGroups(c.tree).length);
+  });
+
+  it('reopens a collapsed group before adding', () => {
+    const t = setCollapsed(defaultLayout(), 'g3', true);
+    const { tree, block } = addExtra(t, 'terminal');
+    expect(isVisible(tree, block)).toBe(true);
+    expect(isVisible(tree, 'terminal')).toBe(true);
+  });
+
+  it('removes only extra blocks and prunes the group', () => {
+    const t = defaultLayout();
+    expect(removeBlock(t, 'terminal')).toBe(t);
+    const { tree, block } = addExtra(t, 'editor');
+    const r = removeBlock(tree, block);
+    expect(extraBlocks(r)).toEqual([]);
+    expect(blockCount(r).sort()).toEqual([...ALL_BLOCKS].sort());
+  });
+
+  it('moves the active tab off a removed block', () => {
+    const a = addExtra(defaultLayout(), 'terminal');
+    const moved = moveBlock(a.tree, 'terminal', findGroup(a.tree, a.block)!.id, 'center');
+    const r = removeBlock(activate(moved, a.block), a.block);
+    expect(findGroup(r, 'terminal')!.active).toBe('terminal');
+  });
+
+  it('keeps extras when a layout without them is applied', () => {
+    const { tree, block } = addExtra(defaultLayout(), 'terminal');
+    const r = keepExtras(defaultLayout(), tree);
+    expect(findGroup(r, block)!.blocks).toContain('terminal');
+    expect(keepExtras(tree, tree)).toBe(tree);
+  });
+
+  it('survives normalize, unknown ids do not', () => {
+    const { tree, block } = addExtra(defaultLayout(), 'editor');
+    const raw = JSON.parse(JSON.stringify(tree));
+    expect(isVisible(normalize(raw), block)).toBe(true);
+    const bad = JSON.parse(JSON.stringify(tree).replace(block, 'hub:9'));
+    expect(extraBlocks(normalize(bad))).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
-import type { BlockId } from './dock-tree';
+import { isExtra, kindOf, type BlockId, type CoreBlock } from './dock-tree';
 import type { IconName } from '../ui/Icon.svelte';
 
-export const BLOCK_META: Record<BlockId, { label: string; icon: IconName }> = {
+export const BLOCK_META: Record<CoreBlock, { label: string; icon: IconName }> = {
   claude: { label: 'Claude', icon: 'spark' },
   editor: { label: 'Editor', icon: 'code' },
   terminal: { label: 'Terminale', icon: 'terminal' },
@@ -12,3 +12,9 @@ export const BLOCK_META: Record<BlockId, { label: string; icon: IconName }> = {
   notes: { label: 'Note', icon: 'note' },
   hub: { label: 'Hub', icon: 'layers' },
 };
+
+/** `terminal:2` reads "Terminale 2". */
+export function blockMeta(b: BlockId): { label: string; icon: IconName } {
+  const core = BLOCK_META[kindOf(b)];
+  return isExtra(b) ? { ...core, label: `${core.label} ${b.split(':')[1]}` } : core;
+}

@@ -1,16 +1,20 @@
 import {
   PRESETS,
   activate,
+  addExtra,
   defaultLayout,
   findGroup,
   isVisible,
+  keepExtras,
   moveBlock,
   normalize,
   placeTab,
+  removeBlock,
   resizeAt,
   setCollapsed,
   type BlockId,
   type DockNode,
+  type ExtraKind,
   type Zone,
 } from './dock-tree';
 
@@ -102,13 +106,26 @@ export class DockStore {
     this.commit(resizeAt(this.tree, path, index, delta));
   }
 
+  /** Adds a block of this kind beside the existing one. */
+  add(kind: ExtraKind): BlockId {
+    const { tree, block } = addExtra(this.tree, kind);
+    this.commit(tree);
+    this.focused = block;
+    return block;
+  }
+
+  remove(b: BlockId): void {
+    this.commit(removeBlock(this.tree, b));
+    if (this.focused === b) this.focused = 'claude';
+  }
+
   reset(): void {
-    this.commit(defaultLayout());
+    this.commit(keepExtras(defaultLayout(), this.tree));
   }
 
   applyPreset(id: string): void {
     const p = PRESETS.find((x) => x.id === id);
-    if (p) this.commit(p.build());
+    if (p) this.commit(keepExtras(p.build(), this.tree));
   }
 
   /** Same name replaces. */
@@ -120,7 +137,7 @@ export class DockStore {
 
   applySaved(name: string): void {
     const l = this.saved.find((x) => x.name === name);
-    if (l) this.commit(normalize(l.tree));
+    if (l) this.commit(keepExtras(normalize(l.tree), this.tree));
   }
 
   deleteSaved(name: string): void {

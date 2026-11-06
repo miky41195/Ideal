@@ -74,6 +74,8 @@ export class Tabs {
   selectionHint = '';
   /** Cursor of the active editor, 1-based line and column (chars); updated at most once per frame. */
   cursor = $state<{ line: number; col: number } | null>(null);
+  /** File of a side editor holding the keyboard: Ctrl+S saves this one instead of the active tab. */
+  focusPath: string | null = null;
   private lastFilePath: string | null = null;
   private diskJobs = new Map<string, { pending: boolean; done: Promise<void> }>();
   private backup: BackupSink | null = null;

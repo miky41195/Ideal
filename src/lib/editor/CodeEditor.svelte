@@ -35,6 +35,7 @@
     formatKeymap,
   } from '@codemirror/lsp-client';
   import { clampSelection } from './disk-policy';
+  import { minimalChange } from './doc-sync';
 
   let {
     tab,
@@ -42,12 +43,15 @@
     isOpen,
     visible = true,
     projectRoot = '',
+    primary = true,
   }: {
     tab: EditorTab;
     onchange: (path: string, content: string) => void;
     isOpen: (path: string) => boolean;
     visible?: boolean;
     projectRoot?: string;
+    /** The main editor: only it follows reveal requests and owns the LSP link, the client allows one view per file. */
+    primary?: boolean;
   } = $props();
 
   let host: HTMLDivElement;
@@ -157,7 +161,7 @@
 
   async function attachLsp(t: EditorTab) {
     const path = t.path;
-    if (!projectRoot || t.readonly || !isFileTab(t) || lspAttached.has(path)) return;
+    if (!primary || !projectRoot || t.readonly || !isFileTab(t) || lspAttached.has(path)) return;
     const ext = await lsp.extensionFor(path, projectRoot);
     if (!ext || !view || lspAttached.has(path) || !isOpen(path)) return;
     const effect = lspComp.reconfigure([ext, lspKeys]);
@@ -259,10 +263,25 @@
     });
   });
 
+  // Another view of this file typed something: take only the changed span, so cursor and undo stay put.
+  $effect(() => {
+    const t = tab;
+    const text = t.content;
+    if (!view || t.path !== currentPath) return;
+    const change = minimalChange(view.state.doc.toString(), text);
+    if (!change) return;
+    applyingExternal = true;
+    try {
+      view.dispatch({ changes: change, annotations: Transaction.addToHistory.of(false) });
+    } finally {
+      applyingExternal = false;
+    }
+  });
+
   // Reveal requests (find in project): select the range and scroll it into view, then clear the request.
   $effect(() => {
     const req = tab.revealRequest;
-    if (!req || !view) return;
+    if (!primary || !req || !view) return;
     if (tab.path !== currentPath) show(tab);
     const doc = view.state.doc;
     const line = doc.line(Math.min(Math.max(1, req.line), doc.lines));

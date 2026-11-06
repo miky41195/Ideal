@@ -1,7 +1,16 @@
 /** Pure layout model for the block workspace: a tree of splits whose leaves are tab groups. */
 
 export const ALL_BLOCKS = ['claude', 'editor', 'terminal', 'explorer', 'git', 'changes', 'search', 'notes', 'hub'] as const;
-export type BlockId = (typeof ALL_BLOCKS)[number];
+export const EXTRA_KINDS = ['terminal', 'editor'] as const;
+export type ExtraKind = (typeof EXTRA_KINDS)[number];
+export type CoreBlock = (typeof ALL_BLOCKS)[number];
+/** Core blocks exist once; extra ones are added and closed by the user, as `terminal:2`. */
+export type BlockId = CoreBlock | `${ExtraKind}:${number}`;
+export type ExtraBlock = Exclude<BlockId, CoreBlock>;
+
+const EXTRA_ID = new RegExp(`^(${EXTRA_KINDS.join('|')}):\\d+$`);
+export const isExtra = (b: unknown): b is ExtraBlock => typeof b === 'string' && EXTRA_ID.test(b);
+export const kindOf = (b: BlockId): CoreBlock => b.split(':')[0] as CoreBlock;
 
 export interface Group {
   type: 'group';
@@ -226,6 +235,44 @@ export function moveBlock(root: DockNode, block: BlockId, target: string, zone: 
   return prune(placed) ?? root;
 }
 
+export function extraBlocks(root: DockNode): ExtraBlock[] {
+  return allGroups(root).flatMap((g) => g.blocks.filter(isExtra));
+}
+
+/** Adds a new block of `kind` beside the group holding the core one. */
+export function addExtra(root: DockNode, kind: ExtraKind): { tree: DockNode; block: ExtraBlock } {
+  const used = extraBlocks(root).filter((b) => kindOf(b) === kind).map((b) => Number(b.split(':')[1]));
+  const block = `${kind}:${Math.max(1, ...used) + 1}` as ExtraBlock;
+  const shown = activate(root, kind);
+  const home = findGroup(shown, kind)!;
+  const fresh: Group = { type: 'group', id: nextGroupId(root), blocks: [block], active: block };
+  const placed = replaceGroup(shown, home.id, (g) => ({ type: 'split', dir: 'row', sizes: [0.5, 0.5], children: [g, fresh] }));
+  return { tree: prune(placed) ?? shown, block };
+}
+
+/** Closes an extra block; core blocks stay. */
+export function removeBlock(root: DockNode, block: BlockId): DockNode {
+  if (!isExtra(block) || !findGroup(root, block)) return root;
+  const left = mapGroups(root, (g) => {
+    if (!g.blocks.includes(block)) return g;
+    const i = g.blocks.indexOf(block);
+    const blocks = g.blocks.filter((b) => b !== block);
+    return { ...g, blocks, active: g.active === block ? (blocks[Math.max(0, i - 1)] ?? g.active) : g.active };
+  });
+  return prune(left) ?? root;
+}
+
+/** Applying a layout must not close open extras: those it lacks become tabs beside their core block. */
+export function keepExtras(next: DockNode, prev: DockNode): DockNode {
+  const have = new Set(extraBlocks(next));
+  const lost = extraBlocks(prev).filter((b) => !have.has(b));
+  if (!lost.length) return next;
+  return mapGroups(next, (g) => {
+    const mine = lost.filter((b) => g.blocks.includes(kindOf(b)));
+    return mine.length ? { ...g, blocks: [...g.blocks, ...mine] } : g;
+  });
+}
+
 /**
  * Puts a tab at a slot of a group's tab strip and activates it. `slot` counts the tabs as
  * seen during the drag, with the dragged tab still in its old place.
@@ -304,7 +351,7 @@ function clean(raw: unknown, seen: Set<BlockId>): DockNode | null {
     if (typeof n.id !== 'string' || !Array.isArray(n.blocks)) return null;
     const blocks: BlockId[] = [];
     for (const b of n.blocks) {
-      if ((ALL_BLOCKS as readonly unknown[]).includes(b) && !seen.has(b as BlockId)) {
+      if (((ALL_BLOCKS as readonly unknown[]).includes(b) || isExtra(b)) && !seen.has(b as BlockId)) {
         seen.add(b as BlockId);
         blocks.push(b as BlockId);
       }
