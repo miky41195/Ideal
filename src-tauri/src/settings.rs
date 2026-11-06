@@ -331,6 +331,17 @@ pub fn set_window_chrome(window: tauri::WebviewWindow, caption: String, text: St
 }
 
 const KEYBINDINGS_TEMPLATE: &str = "[\n]\n";
+const EXTENSIONS_TEMPLATE: &str = r##"{
+  "themes": [],
+  "snippets": [],
+  "commands": [],
+  "_esempi": {
+    "themes": [{ "id": "mio", "label": "Mio", "base": "grafite", "accent": "#ff8800" }],
+    "snippets": [{ "prefix": "log", "body": "console.log(${1})", "languages": ["typescript", "javascript"] }],
+    "commands": [{ "label": "Compila", "run": "npm run build" }]
+  }
+}
+"##;
 
 #[tauri::command(async)]
 pub fn get_keybindings() -> Option<String> {
@@ -350,6 +361,26 @@ pub fn ensure_keybindings_file(dir: &Path) -> Result<PathBuf, String> {
 #[tauri::command(async)]
 pub fn keybindings_path() -> Result<String, String> {
     ensure_keybindings_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+pub fn get_extensions() -> Option<String> {
+    std::fs::read_to_string(config_dir().join("extensions.json")).ok()
+}
+
+/// Path of extensions.json; creates a commented template if missing.
+pub fn ensure_extensions_file(dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(err)?;
+    let path = dir.join("extensions.json");
+    if !path.exists() {
+        std::fs::write(&path, EXTENSIONS_TEMPLATE).map_err(err)?;
+    }
+    Ok(path)
+}
+
+#[tauri::command(async)]
+pub fn extensions_path() -> Result<String, String> {
+    ensure_extensions_file(&config_dir()).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command(async)]
@@ -408,7 +439,7 @@ pub fn start_watcher(app: AppHandle) {
         return;
     }
     let (tx, rx) = mpsc::channel::<()>();
-    let names = [std::ffi::OsString::from("settings.json"), std::ffi::OsString::from("keybindings.json")];
+    let names = ["settings.json", "keybindings.json", "extensions.json"].map(std::ffi::OsString::from);
     let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(ev) = res {
             if ev.paths.iter().any(|p| p.file_name().is_some_and(|f| names.iter().any(|n| n.as_os_str() == f))) {
@@ -434,6 +465,7 @@ pub fn start_watcher(app: AppHandle) {
             while rx.recv_timeout(DEBOUNCE).is_ok() {}
             let _ = app.emit("settings://changed", load(&dir));
             let _ = app.emit("keybindings://changed", ());
+            let _ = app.emit("extensions://changed", ());
         }
     });
 }
@@ -525,6 +557,16 @@ mod tests {
         std::fs::write(&p, "[1]").unwrap();
         ensure_keybindings_file(d.path()).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "[1]");
+    }
+
+    #[test]
+    fn extensions_file_is_created_once() {
+        let d = tmp();
+        let p = ensure_extensions_file(d.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), EXTENSIONS_TEMPLATE);
+        std::fs::write(&p, "{}").unwrap();
+        ensure_extensions_file(d.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "{}");
     }
 
     #[test]

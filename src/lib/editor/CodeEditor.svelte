@@ -36,6 +36,8 @@
   } from '@codemirror/lsp-client';
   import { clampSelection } from './disk-policy';
   import { minimalChange } from './doc-sync';
+  import { extensions as userExtensions } from '../extensions/extensions.svelte';
+  import { languageIdFor } from '../lsp/lang';
 
   let {
     tab,
@@ -94,6 +96,8 @@
     });
   }
 
+  const snippets = userExtensions.completions(() => (currentPath ? languageIdFor(currentPath) : null));
+
   function extensions(t: EditorTab): Extension[] {
     return [
       lineNumbers(),
@@ -107,6 +111,7 @@
       bracketMatching(),
       closeBrackets(),
       autocompletion(),
+      EditorState.languageData.of(() => [{ autocomplete: snippets }]),
       rectangularSelection(),
       crosshairCursor(),
       highlightActiveLine(),

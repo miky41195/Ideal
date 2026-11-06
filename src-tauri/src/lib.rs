@@ -66,6 +66,8 @@ pub fn run() {
             settings::set_theme,
             settings::get_keybindings,
             settings::keybindings_path,
+            settings::get_extensions,
+            settings::extensions_path,
             settings::set_window_chrome,
             settings::get_recent,
             settings::add_recent,

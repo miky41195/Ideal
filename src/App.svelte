@@ -31,6 +31,7 @@
   import { dock } from './lib/dock/dock.svelte';
   import type { BlockId, Zone } from './lib/dock/dock-tree';
   import { THEMES, applyTheme } from './lib/theme/themes';
+  import { extensions } from './lib/extensions/extensions.svelte';
   import { parseKeybindings } from './lib/keys/user-bindings';
   import { setBindings } from './lib/keys/router';
   import { listen } from '@tauri-apps/api/event';
@@ -54,6 +55,15 @@
     label: `Sposta blocco attivo ${label}`,
     run: () => dock.move(dock.focused, 'root', zone),
   });
+  const openConfig = (name: string, command: string) => async () => {
+    try {
+      await tabs.openFile(await invoke<string>(command));
+      ws.showEditor();
+    } catch (e) {
+      showToast(`Impossibile aprire ${name}: ${e}`);
+    }
+  };
+
   const builtins: PaletteCommand[] = [
     bus('toggleMode', 'Passa a Claude / Editor', 'toggleMode'),
     { id: 'addTerminal', label: 'Aggiungi blocco Terminale', run: () => void dock.add('terminal') },
@@ -91,14 +101,12 @@
     {
       id: 'openKeybindings',
       label: 'Apri keybindings.json',
-      run: async () => {
-        try {
-          await tabs.openFile(await invoke<string>('keybindings_path'));
-          ws.showEditor();
-        } catch (e) {
-          showToast(`Impossibile aprire keybindings.json: ${e}`);
-        }
-      },
+      run: openConfig('keybindings.json', 'keybindings_path'),
+    },
+    {
+      id: 'openExtensions',
+      label: 'Apri extensions.json (temi, snippet, comandi)',
+      run: openConfig('extensions.json', 'extensions_path'),
     },
     showView('viewChanges', 'Mostra Modifiche della sessione', 'changes'),
     showView('viewExplorer', 'Mostra Esplora file', 'explorer'),
@@ -166,7 +174,9 @@
   onMount(() => {
     void settings.init();
     void loadKeybindings();
+    void extensions.load();
     const offKeys = listen('keybindings://changed', () => void loadKeybindings());
+    const offExtensions = listen('extensions://changed', () => void extensions.load());
     // Claude/shell edits files without going through the editor: refresh once output goes idle.
     const idleRefresh = debounce(() => void git.refresh(), 1500);
     const offs = [
@@ -247,6 +257,7 @@
     return () => {
       disposed = true;
       void offKeys.then((f) => f());
+      void offExtensions.then((f) => f());
       void lsp.stopAll();
       offGit?.();
       offFs?.();

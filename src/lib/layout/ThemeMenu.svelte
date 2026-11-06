@@ -1,5 +1,6 @@
 <script lang="ts">
   import { THEMES, resolveTheme, type Theme } from '../theme/themes';
+  import { extensions } from '../extensions/extensions.svelte';
   import { themeState } from '../theme/theme-state.svelte';
   import { settings } from '../settings/settings.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -39,7 +40,7 @@
   </button>
   {#if open}
     <div class="menu" role="menu" tabindex="-1" onpointerleave={restore}>
-      {#each THEMES as t (t.id)}
+      {#each [...THEMES, ...extensions.themes] as t (t.id)}
         <button role="menuitemradio" aria-checked={t.id === current.id} onclick={() => pick(t)} onpointerenter={() => preview(t)} onfocus={() => preview(t)}>
           <span class="sw" style:background={t.canvas}>
             <i style:background={t.panel}></i>

@@ -177,9 +177,16 @@ export const THEMES: Theme[] = [
 
 export const DEFAULT_THEME = 'grafite';
 
+let userThemes: Theme[] = [];
+
+/** Themes from extensions.json, on top of the built-in ones. */
+export function setUserThemes(themes: Theme[]): void {
+  userThemes = themes;
+}
+
 /** Unknown ids, including the old `ideal-dark`, land on the default. */
 export function resolveTheme(id: string | null | undefined): Theme {
-  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!;
+  return [...THEMES, ...userThemes].find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!;
 }
 
 const alpha = (hex: string, a: number) =>
