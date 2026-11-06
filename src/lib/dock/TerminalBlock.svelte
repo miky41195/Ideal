@@ -5,15 +5,34 @@
   import { toPtyText } from '../claude/send-bridge';
   import { settings } from '../settings/settings.svelte';
   import { registerCommands } from '../palette/registry';
-  import { terminalTabs as tt } from '../layout/terminal-tabs.svelte';
+  import { terminalTabs as tt, type TerminalTab } from '../layout/terminal-tabs.svelte';
   import Icon from '../ui/Icon.svelte';
   import { dock } from './dock.svelte';
   let { cwd, visible }: { cwd: string; visible: boolean } = $props();
 
   const ENTER = String.fromCharCode(13);
+  const START_MS = 2500;
+  const QUIET_MS = 700;
 
-  function runOnce(run: string | undefined, id: number) {
-    if (run) writePty(id, toPtyText(run) + ENTER).catch((e) => console.warn('pty_write failed', e));
+  // A shell can drop keys sent before its prompt: a tab's command waits for the screen to settle.
+  const waiting = new Map<number, { ptyId: number; timer: ReturnType<typeof setTimeout> }>();
+
+  function send(tabId: number) {
+    const w = waiting.get(tabId);
+    waiting.delete(tabId);
+    const run = tt.tabs.find((t) => t.id === tabId)?.run;
+    if (w && run) writePty(w.ptyId, toPtyText(run) + ENTER).catch((e) => console.warn('pty_write failed', e));
+  }
+
+  function spawned(tab: TerminalTab, ptyId: number) {
+    if (tab.run) waiting.set(tab.id, { ptyId, timer: setTimeout(() => send(tab.id), START_MS) });
+  }
+
+  function screenChanged(tabId: number) {
+    const w = waiting.get(tabId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    w.timer = setTimeout(() => send(tabId), QUIET_MS);
   }
 
   onMount(() =>
@@ -45,7 +64,7 @@
   <div class="body">
     {#each tt.tabs as t (t.id)}
       <div class="pane" class:off={t.id !== tt.active}>
-        <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} {cwd} visible={visible && t.id === tt.active} onspawn={(id) => runOnce(t.run, id)} />
+        <TerminalView kind={{ type: 'Shell', program: settings.value.terminal.shell }} {cwd} visible={visible && t.id === tt.active} onspawn={(id) => spawned(t, id)} onscreen={t.run ? () => screenChanged(t.id) : undefined} />
       </div>
     {/each}
   </div>
