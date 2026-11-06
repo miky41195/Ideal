@@ -6,6 +6,7 @@ import {
   isVisible,
   moveBlock,
   normalize,
+  placeTab,
   resizeAt,
   setCollapsed,
   type BlockId,
@@ -86,6 +87,10 @@ export class DockStore {
 
   move(b: BlockId, target: string, zone: Zone): void {
     this.commit(moveBlock(this.tree, b, target, zone));
+  }
+
+  place(b: BlockId, target: string, slot: number): void {
+    this.commit(placeTab(this.tree, b, target, slot));
   }
 
   /** Live drag: updates the view from a fixed base tree, saved once on release. */

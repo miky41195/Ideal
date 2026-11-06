@@ -226,6 +226,26 @@ export function moveBlock(root: DockNode, block: BlockId, target: string, zone: 
   return prune(placed) ?? root;
 }
 
+/**
+ * Puts a tab at a slot of a group's tab strip and activates it. `slot` counts the tabs as
+ * seen during the drag, with the dragged tab still in its old place.
+ */
+export function placeTab(root: DockNode, block: BlockId, target: string, slot: number): DockNode {
+  const from = findGroup(root, block);
+  const to = allGroups(root).find((g) => g.id === target);
+  if (!from || !to) return root;
+  const same = from.id === target;
+  const at = same && from.blocks.indexOf(block) < slot ? slot - 1 : slot;
+  const insert = (blocks: BlockId[]) => {
+    const rest = blocks.filter((b) => b !== block);
+    rest.splice(at, 0, block);
+    return rest;
+  };
+  if (same && to.active === block && insert(to.blocks).every((b, i) => b === to.blocks[i])) return root;
+  const base = same ? root : moveBlock(root, block, target, 'center');
+  return mapGroups(base, (g) => (g.id === target ? { ...g, blocks: insert(g.blocks), active: block } : g));
+}
+
 function atPath(n: DockNode, path: number[], f: (s: Split) => Split): DockNode {
   if (n.type !== 'split') return n;
   if (!path.length) return f(n);

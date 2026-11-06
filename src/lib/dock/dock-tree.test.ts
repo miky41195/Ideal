@@ -10,6 +10,7 @@ import {
   layoutRects,
   moveBlock,
   normalize,
+  placeTab,
   resizeAt,
   setCollapsed,
   zoneAt,
@@ -165,6 +166,58 @@ describe('moveBlock', () => {
     const after = allGroups(r).find((g) => g.id === left.id)!;
     expect(after.blocks).toContain(after.active);
     expect(after.active).not.toBe('explorer');
+  });
+});
+
+describe('placeTab', () => {
+  const blocksOf = (n: ReturnType<typeof defaultLayout>, id: string) => allGroups(n).find((g) => g.id === id)!.blocks;
+
+  it('moves a tab forward within its group', () => {
+    const r = placeTab(defaultLayout(), 'explorer', 'g1', 3);
+    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'explorer', 'search', 'notes', 'hub']);
+  });
+
+  it('moves a tab back within its group', () => {
+    const r = placeTab(defaultLayout(), 'hub', 'g1', 1);
+    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'hub', 'git', 'changes', 'search', 'notes']);
+  });
+
+  it('moves a tab to the end when the slot is past the last tab', () => {
+    const r = placeTab(defaultLayout(), 'explorer', 'g1', 6);
+    expect(blocksOf(r, 'g1')).toEqual(['git', 'changes', 'search', 'notes', 'hub', 'explorer']);
+  });
+
+  it('activates the moved tab', () => {
+    const r = placeTab(defaultLayout(), 'hub', 'g1', 0);
+    expect(allGroups(r).find((g) => g.id === 'g1')!.active).toBe('hub');
+  });
+
+  it('returns the same tree when the tab is dropped next to itself and already active', () => {
+    const t = defaultLayout();
+    expect(placeTab(t, 'explorer', 'g1', 0)).toBe(t);
+    expect(placeTab(t, 'explorer', 'g1', 1)).toBe(t);
+  });
+
+  it('activates a tab dropped next to itself without reordering', () => {
+    const r = placeTab(defaultLayout(), 'git', 'g1', 1);
+    expect(blocksOf(r, 'g1')).toEqual(['explorer', 'git', 'changes', 'search', 'notes', 'hub']);
+    expect(allGroups(r).find((g) => g.id === 'g1')!.active).toBe('git');
+  });
+
+  it('inserts at a slot in another group and prunes an emptied source', () => {
+    const r = placeTab(defaultLayout(), 'terminal', 'g2', 1);
+    expect(blocksOf(r, 'g2')).toEqual(['claude', 'terminal', 'editor']);
+    expect(allGroups(r).some((g) => g.id === 'g3')).toBe(false);
+  });
+
+  it('keeps every block exactly once', () => {
+    const r = placeTab(placeTab(defaultLayout(), 'terminal', 'g1', 2), 'hub', 'g2', 0);
+    expect(blockCount(r).sort()).toEqual([...ALL_BLOCKS].sort());
+  });
+
+  it('ignores an unknown target', () => {
+    const t = defaultLayout();
+    expect(placeTab(t, 'git', 'nope', 0)).toBe(t);
   });
 });
 

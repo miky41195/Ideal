@@ -143,7 +143,9 @@
         onerror?.(String(e));
       });
 
-    const ro = new ResizeObserver(() => refit());
+    // One refit per pause: each PTY resize makes Claude repaint, too slow to do on every step of a drag.
+    const refitSoon = debounce(refit, 80);
+    const ro = new ResizeObserver(() => refitSoon());
     ro.observe(host);
 
     const scanDraft = debounce(() => {
@@ -174,6 +176,7 @@
     return () => {
       destroyed = true;
       scanDraft.cancel();
+      refitSoon.cancel();
       clearTimeout(screenTimer);
       offParsed.dispose();
       ro.disconnect();
