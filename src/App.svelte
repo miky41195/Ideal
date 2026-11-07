@@ -37,6 +37,8 @@
   import { listen } from '@tauri-apps/api/event';
   import { themeState } from './lib/theme/theme-state.svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import UpdateBanner from './lib/update/UpdateBanner.svelte';
+  import { updater, setBeforeInstall } from './lib/update/update.svelte';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -214,6 +216,7 @@
     let offGit: (() => void) | undefined;
     let offFs: (() => void) | undefined;
     let disposed = false;
+    void updater.checkNow();
     if (project) {
       hub.projectPath = project;
       const scheduler = createBackupScheduler(
@@ -222,6 +225,8 @@
       );
       tabs.setBackupSink(scheduler);
       offs.push(() => tabs.setBackupSink(null));
+      // The installer closes Ideal without a close request: back up unsaved buffers first.
+      setBeforeInstall(() => scheduler.flush());
       void backupList(project)
         .then((list) => restoreBackups(tabs, list, (p) => void backupClear(project, p).catch(() => {})))
         .then((count) => {
@@ -269,10 +274,12 @@
 </script>
 
 {#if !project}
+  <div class="welcome-update"><UpdateBanner /></div>
   <Welcome />
 {:else if settings.ready}
   <div class="shell">
     <TopBar {name} path={project} />
+    <UpdateBanner />
     <PluginBanner />
     <div class="row">
       <DockStage {project} />
@@ -285,6 +292,9 @@
 <Toasts />
 
 <style>
+  .welcome-update {
+    padding-top: var(--gap);
+  }
   .shell {
     display: flex;
     flex-direction: column;

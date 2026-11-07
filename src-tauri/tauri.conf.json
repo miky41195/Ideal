@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ideal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "dev.ideal.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -33,6 +33,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4RTQyNEZBNzA4NEZDQTUKUldTbC9JUncraVRrU0ZYaVppOER6MGtOUEp6L1NrbE45L3A3NGpGQ0hId0F3dHN6UFJuMGVFb3QK",
+      "endpoints": [
+        "https://github.com/miky41195/Ideal/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
