@@ -33,6 +33,18 @@ describe('Tabs', () => {
     expect(cb).toHaveBeenCalledTimes(1);
   });
 
+  it('same file spelled differently (drive case, slashes) reuses one tab', async () => {
+    const t = new Tabs();
+    await t.openFile('C:\\p\\a.ts');
+    await t.openFile('c:/p/a.ts');
+    await t.reveal('c:\\P\\a.ts', 2);
+    expect(t.tabs).toHaveLength(1);
+    expect(t.activePath).toBe('C:\\p\\a.ts');
+    expect(t.tabs[0].revealRequest?.line).toBe(2);
+    t.openRestored('c:/p/a.ts', 'x', 'y', 'lf', false);
+    expect(t.tabs).toHaveLength(1);
+  });
+
   it('doc and file tabs never share a slot', async () => {
     const t = new Tabs();
     t.openDoc('md:C:\\p\\a.md', 'a', '# a', 'C:\\p\\a.md');
@@ -335,6 +347,35 @@ describe('onDiskChanged', () => {
     await t.onDiskChanged([P]);
     expect(t.tabs[0].diskConflict).toBe('theirs');
     expect(t.tabs[0].content).toBe('mine');
+  });
+
+  it('"Ricarica" on a conflict takes the disk line endings too', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    read.mockResolvedValue({ content: 'theirs', eol: 'crlf', readonly: false, reason: null });
+    await t.onDiskChanged([P]);
+    t.reloadFromDisk(P);
+    expect(t.tabs[0].content).toBe('theirs');
+    expect(t.tabs[0].eol).toBe('crlf');
+  });
+
+  it('save refuses while the disk conflict banner is open; keepMine then allows it', async () => {
+    const t = new Tabs();
+    disk('one');
+    await t.openFile(P);
+    t.setContent(P, 'mine');
+    disk('theirs');
+    await t.onDiskChanged([P]);
+    write.mockClear();
+    await t.save(P);
+    await t.saveAll();
+    expect(write).not.toHaveBeenCalled();
+    expect(t.errors[P]).toBeDefined();
+    t.keepMine(P);
+    await t.save(P);
+    expect(write).toHaveBeenCalledWith(P, 'mine', expect.anything());
   });
 
   it('own save echo is ignored', async () => {

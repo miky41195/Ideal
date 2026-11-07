@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const MAX_BACKUP_BYTES: usize = 5 * 1024 * 1024;
@@ -43,8 +42,9 @@ fn err<E: std::fmt::Display>(e: E) -> String {
 }
 
 pub fn backup_write_impl(base: &Path, project: &str, file: &str, content: &str, eol: &str) -> Result<(), String> {
+    // An error, not a silent skip: hot exit then asks before closing instead of losing the edits.
     if content.len() > MAX_BACKUP_BYTES {
-        return Ok(());
+        return Err("file troppo grande per il backup".into());
     }
     let dir = project_dir(base, project);
     fs::create_dir_all(&dir).map_err(err)?;
@@ -54,22 +54,7 @@ pub fn backup_write_impl(base: &Path, project: &str, file: &str, content: &str, 
         .unwrap_or(0);
     let json = serde_json::to_vec(&Backup { file_path: file.to_string(), content: content.to_string(), eol: eol.to_string(), saved_at })
         .map_err(err)?;
-    let mut tmp = tempfile::NamedTempFile::new_in(&dir).map_err(err)?;
-    tmp.write_all(&json).map_err(err)?;
-    tmp.as_file().sync_all().map_err(err)?;
-    let target = file_path(base, project, file);
-    let mut last = None;
-    for _ in 0..20 {
-        match tmp.persist(&target) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                tmp = e.file;
-                last = Some(e.error);
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-        }
-    }
-    Err(err(last.unwrap()))
+    crate::fs_cmds::atomic_write(&file_path(base, project, file), &json)
 }
 
 pub fn backup_clear_impl(base: &Path, project: &str, file: &str) -> Result<(), String> {
@@ -168,9 +153,9 @@ mod tests {
     }
 
     #[test]
-    fn oversized_content_is_skipped() {
+    fn oversized_content_is_refused() {
         let d = tempdir().unwrap();
-        backup_write_impl(d.path(), "p", "big", &"a".repeat(MAX_BACKUP_BYTES + 1), "lf").unwrap();
+        assert!(backup_write_impl(d.path(), "p", "big", &"a".repeat(MAX_BACKUP_BYTES + 1), "lf").is_err());
         assert!(backup_list_impl(d.path(), "p").is_empty());
     }
 }

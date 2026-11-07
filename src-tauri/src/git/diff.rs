@@ -52,9 +52,7 @@ fn build(old: Option<Vec<u8>>, new: Option<Vec<u8>>) -> DiffText {
     }
 }
 
-fn valid_hash(h: &str) -> bool {
-    !h.is_empty() && h.len() <= 64 && h.chars().all(|c| c.is_ascii_hexdigit())
-}
+use crate::git::history::valid_hash;
 
 fn valid_path(file: &str) -> bool {
     use std::path::Component;

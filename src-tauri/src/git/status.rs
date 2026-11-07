@@ -169,6 +169,18 @@ mod tests {
     }
 
     #[test]
+    fn status_never_runs_fsmonitor_from_repo_config() {
+        let d = test_repo();
+        let p = d.path();
+        let marker = p.join("pwned");
+        let hook = format!("echo x > '{}'", marker.to_string_lossy().replace('\\', "/"));
+        runner::git(p, &["config", "core.fsmonitor", &hook]).unwrap();
+        std::fs::write(p.join("a.txt"), "a").unwrap();
+        status_impl(p).unwrap();
+        assert!(!marker.exists(), "fsmonitor hook from .git/config was executed");
+    }
+
+    #[test]
     fn parse_unborn() {
         let s = parse_porcelain_v2("# branch.oid (initial)\0# branch.head main\0");
         assert_eq!(s.branch.as_deref(), Some("main"));

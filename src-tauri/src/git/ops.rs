@@ -1,5 +1,5 @@
 use crate::git::{
-    runner::{git, git_exit, git_network},
+    runner::{git, git_exit, git_network, git_timeout},
     status::status_impl,
 };
 use std::time::Duration;
@@ -71,12 +71,19 @@ pub fn discard_with(
     Ok(())
 }
 
+/// A hanging pre-commit hook or GPG prompt must not leave the Commit button busy forever.
+const COMMIT_TIMEOUT: Duration = Duration::from_secs(600);
+
 pub fn commit_impl(cwd: &Path, message: &str) -> Result<String, String> {
+    commit_within(cwd, message, COMMIT_TIMEOUT)
+}
+
+fn commit_within(cwd: &Path, message: &str, timeout: Duration) -> Result<String, String> {
     let msg = message.trim();
     if msg.is_empty() {
         return Err("messaggio di commit vuoto".to_string());
     }
-    git(cwd, &["commit", "-m", msg])?;
+    git_timeout(cwd, &["commit", "-m", msg], timeout)?;
     Ok(git(cwd, &["rev-parse", "--short", "HEAD"])?
         .trim()
         .to_string())
@@ -364,6 +371,19 @@ mod tests {
             git(p, &["log", "-1", "--format=%s"]).unwrap().trim(),
             "hello world"
         );
+    }
+
+    #[test]
+    fn commit_with_hanging_hook_times_out() {
+        let d = test_repo();
+        let p = d.path();
+        fs::write(p.join(".git/hooks/pre-commit"), "#!/bin/sh\nsleep 10\n").unwrap();
+        fs::write(p.join("a.txt"), "1").unwrap();
+        stage_impl(p, &s("a.txt")).unwrap();
+        let t = std::time::Instant::now();
+        let e = commit_within(p, "x", Duration::from_millis(800)).unwrap_err();
+        assert!(e.contains("scaduta"), "{e}");
+        assert!(t.elapsed() < Duration::from_secs(5));
     }
 
     #[test]

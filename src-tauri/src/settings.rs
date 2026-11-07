@@ -1,7 +1,6 @@
 use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -35,10 +34,11 @@ pub struct EditorSettings {
     pub font_size: u16,
     pub tab_size: u8,
     pub font_family: String,
+    pub minimap: bool,
 }
 impl Default for EditorSettings {
     fn default() -> Self {
-        Self { font_size: 14, tab_size: 2, font_family: "Cascadia Code, Consolas, monospace".into() }
+        Self { font_size: 14, tab_size: 2, font_family: "Cascadia Code, Consolas, monospace".into(), minimap: true }
     }
 }
 
@@ -67,25 +67,12 @@ impl Default for ClaudeSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
-pub struct LayoutSettings {
-    pub sidebar_width: u16,
-    pub panel_height: u16,
-}
-impl Default for LayoutSettings {
-    fn default() -> Self {
-        Self { sidebar_width: 260, panel_height: 220 }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub terminal: TerminalSettings,
     pub editor: EditorSettings,
     pub theme: String,
     pub claude_mem: ClaudeMemSettings,
     pub claude: ClaudeSettings,
-    pub layout: LayoutSettings,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -95,7 +82,6 @@ impl Default for Settings {
             theme: "ideal-dark".into(),
             claude_mem: Default::default(),
             claude: Default::default(),
-            layout: Default::default(),
         }
     }
 }
@@ -107,17 +93,9 @@ pub struct SettingsWithWarning {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, rename_all = "camelCase")]
-pub struct LayoutState {
-    pub sidebar_width: Option<u16>,
-    pub panel_height: Option<u16>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppState {
     pub recent_projects: Vec<String>,
-    pub layout: HashMap<String, LayoutState>,
 }
 
 // ---------- pure logic ----------
@@ -182,23 +160,7 @@ pub fn load_state(dir: &Path) -> AppState {
 pub fn save_state(dir: &Path, state: &AppState) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(err)?;
     let data = serde_json::to_string_pretty(state).map_err(err)?;
-    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(err)?;
-    tmp.write_all(data.as_bytes()).map_err(err)?;
-    tmp.as_file().sync_all().map_err(err)?;
-    let target = dir.join("state.json");
-    // On Windows a rename can transiently fail under contention; retry briefly.
-    let mut last = None;
-    for _ in 0..20 {
-        match tmp.persist(&target) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                tmp = e.file;
-                last = Some(e.error);
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        }
-    }
-    Err(err(last.unwrap()))
+    crate::fs_cmds::atomic_write(&dir.join("state.json"), data.as_bytes())
 }
 
 fn path_key(path: &str) -> String {
@@ -222,12 +184,7 @@ pub fn get_recent_impl(dir: &Path) -> Vec<String> {
 
 /// FNV-1a 64-bit hash of the normalized path, as 16 hex chars.
 pub fn window_hash(path: &str) -> String {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in path_key(path).bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    format!("{h:016x}")
+    format!("{:016x}", crate::backups::fnv1a64(&path_key(path)))
 }
 
 pub fn window_label(path: &str) -> String {
@@ -285,15 +242,14 @@ pub fn ensure_settings_file(dir: &Path) -> Result<PathBuf, String> {
 pub fn set_theme_impl(dir: &Path, theme: &str) -> Result<(), String> {
     let path = ensure_settings_file(dir)?;
     let text = std::fs::read_to_string(&path).map_err(err)?;
-    let mut json: Value = serde_json::from_str(&text).map_err(|e| format!("settings.json non valido: {e}"))?;
+    let mut json: Value =
+        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("settings.json non valido: {e}"))?;
     let Some(obj) = json.as_object_mut() else {
         return Err("settings.json non valido: non è un oggetto".into());
     };
     obj.insert("theme".into(), Value::String(theme.into()));
     let out = serde_json::to_string_pretty(&json).map_err(err)?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, out).map_err(err)?;
-    std::fs::rename(&tmp, &path).map_err(err)
+    crate::fs_cmds::atomic_write(&path, out.as_bytes())
 }
 
 #[tauri::command(async)]
@@ -511,6 +467,16 @@ mod tests {
     }
 
     #[test]
+    fn minimap_setting_reaches_the_ui() {
+        let d = tmp();
+        fs::write(d.path().join("settings.json"), r#"{"editor":{"minimap":false}}"#).unwrap();
+        let r = load(d.path());
+        let json = serde_json::to_value(&r.settings).unwrap();
+        assert_eq!(json["editor"]["minimap"], false);
+        assert_eq!(serde_json::to_value(Settings::default()).unwrap()["editor"]["minimap"], true);
+    }
+
+    #[test]
     fn load_invalid_json_warns() {
         let d = tmp();
         fs::write(d.path().join("settings.json"), "{ not json").unwrap();
@@ -588,6 +554,14 @@ mod tests {
     }
 
     #[test]
+    fn set_theme_accepts_a_bom() {
+        let d = tmp();
+        std::fs::write(d.path().join("settings.json"), "\u{feff}{\"editor\":{\"fontSize\":20}}").unwrap();
+        set_theme_impl(d.path(), "bosco").unwrap();
+        assert_eq!(load(d.path()).settings.theme, "bosco");
+    }
+
+    #[test]
     fn set_theme_refuses_invalid_json_without_touching_it() {
         let d = tmp();
         let p = d.path().join("settings.json");
@@ -645,10 +619,11 @@ mod tests {
     }
 
     #[test]
-    fn state_roundtrip_with_layout() {
+    fn state_roundtrip_ignores_old_layout_key() {
         let d = tmp();
-        let mut s = AppState::default();
-        s.layout.insert("c:/a".into(), LayoutState { sidebar_width: Some(300), panel_height: None });
+        fs::write(d.path().join("state.json"), r#"{"recent_projects":["c:/a"],"layout":{"c:/a":{}}}"#).unwrap();
+        let s = load_state(d.path());
+        assert_eq!(s.recent_projects, vec!["c:/a".to_string()]);
         save_state(d.path(), &s).unwrap();
         assert_eq!(load_state(d.path()), s);
     }

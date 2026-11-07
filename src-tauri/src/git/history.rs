@@ -46,7 +46,7 @@ type CacheKey = (String, bool);
 #[derive(Default)]
 pub struct HeatmapCache(pub Mutex<HashMap<CacheKey, (String, Heatmap)>>);
 
-fn valid_hash(h: &str) -> bool {
+pub(crate) fn valid_hash(h: &str) -> bool {
     !h.is_empty() && h.len() <= 64 && h.chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -62,7 +62,8 @@ fn valid_date(d: &str) -> bool {
         })
 }
 
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+/// Days since 1970-01-01 of a civil date (Howard Hinnant).
+pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -330,16 +331,20 @@ pub fn day_commits_impl(
     if hashes.is_empty() {
         return Ok(vec![]);
     }
-    let mut args: Vec<&str> = vec![
-        "log",
-        "--no-walk=unsorted",
-        "--numstat",
-        "-M",
-        "--date=format-local:%Y-%m-%d",
-        "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
-    ];
-    args.extend(hashes.iter().copied());
-    let out = runner::git_read(cwd, &args)?;
+    // Hashes go on stdin: ~700 of them would overflow the Windows command line.
+    let out = runner::git_read_stdin(
+        cwd,
+        &[
+            "log",
+            "--no-walk=unsorted",
+            "--stdin",
+            "--numstat",
+            "-M",
+            "--date=format-local:%Y-%m-%d",
+            "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%ad",
+        ],
+        hashes.join("\n") + "\n",
+    )?;
     let mut res = Vec::new();
     for rec in out.split('\x1e').filter(|r| !r.trim().is_empty()) {
         let mut lines = rec.lines();
@@ -562,6 +567,23 @@ mod tests {
         assert_eq!((v[1].additions, v[1].deletions, v[1].files), (2, 0, 1));
         assert_eq!(v[0].email, "me@ideal.dev");
         assert_eq!(v[0].short, &v[0].hash[..v[0].short.len()]);
+    }
+
+    #[test]
+    fn day_commits_handles_more_commits_than_a_command_line_holds() {
+        let d = test_repo();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let mut stream = String::new();
+        for i in 1..=900 {
+            let msg = format!("c{i}");
+            stream += &format!("commit refs/heads/main\nmark :{i}\ncommitter Me <me@ideal.dev> {now} +0000\ndata {}\n{msg}\n", msg.len());
+            if i > 1 {
+                stream += &format!("from :{}\n", i - 1);
+            }
+        }
+        runner::git_read_stdin(d.path(), &["fast-import", "--quiet"], stream).unwrap();
+        let v = day_commits_impl(d.path(), &today(d.path()), false).unwrap();
+        assert_eq!(v.len(), 900);
     }
 
     #[test]

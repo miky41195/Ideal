@@ -116,11 +116,15 @@ pub fn write_text_file_impl(path: &Path, content: &str, eol: &str) -> Result<(),
             classify_bytes(fs::read(path).map_err(err)?).map_err(|r| r.to_string())?;
         }
     }
-    let data = apply_eol(&normalize_to_lf(content), eol);
+    atomic_write(path, apply_eol(&normalize_to_lf(content), eol).as_bytes())
+}
+
+/// Unique temp file next to `path`, synced, then renamed over it: readers never see half a file.
+pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), String> {
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     path.file_name().ok_or("percorso non valido")?;
     let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(err)?;
-    tmp.write_all(data.as_bytes()).map_err(err)?;
+    tmp.write_all(data).map_err(err)?;
     tmp.as_file().sync_all().map_err(err)?;
     // On Windows a rename can transiently fail under contention; retry briefly.
     let mut last = None;

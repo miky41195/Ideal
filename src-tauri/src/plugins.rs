@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const ALLOWED_KEYS: [&str; 2] = ["claude-mem@thedotmack", "caveman@caveman"];
@@ -21,7 +20,7 @@ pub fn plugins_status_impl(settings_path: &Path) -> Result<PluginStatus, String>
         }
         Err(e) => return Err(e.to_string()),
     };
-    let v: Value = serde_json::from_str(&text).map_err(|_| INVALID.to_string())?;
+    let v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|_| INVALID.to_string())?;
     let on = |k: &str| {
         v.get("enabledPlugins")
             .and_then(|p| p.get(k))
@@ -37,7 +36,7 @@ pub fn plugin_enable_impl(settings_path: &Path, key: &str) -> Result<(), String>
     }
     let text = std::fs::read_to_string(settings_path)
         .map_err(|_| "settings.json di Claude non trovato".to_string())?;
-    let mut v: Value = serde_json::from_str(&text).map_err(|_| INVALID.to_string())?;
+    let mut v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|_| INVALID.to_string())?;
     let root = v.as_object_mut().ok_or(INVALID)?;
     let plugins = root
         .entry("enabledPlugins")
@@ -50,11 +49,7 @@ pub fn plugin_enable_impl(settings_path: &Path, key: &str) -> Result<(), String>
 
     let mut out = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
     out.push('\n');
-    let dir = settings_path.parent().unwrap_or(Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| e.to_string())?;
-    tmp.write_all(out.as_bytes()).map_err(|e| e.to_string())?;
-    tmp.persist(settings_path).map_err(|e| e.error.to_string())?;
-    Ok(())
+    crate::fs_cmds::atomic_write(settings_path, out.as_bytes())
 }
 
 fn claude_settings_path() -> Result<PathBuf, String> {
@@ -81,6 +76,16 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let s = plugins_status_impl(&d.path().join("nope.json")).unwrap();
         assert_eq!(s, PluginStatus { claude_mem: false, caveman: false });
+    }
+
+    #[test]
+    fn plugins_accept_a_bom() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        std::fs::write(&p, "\u{feff}{\"enabledPlugins\":{\"caveman@caveman\":true}}").unwrap();
+        assert!(plugins_status_impl(&p).unwrap().caveman);
+        plugin_enable_impl(&p, "claude-mem@thedotmack").unwrap();
+        assert!(plugins_status_impl(&p).unwrap().claude_mem);
     }
 
     #[test]

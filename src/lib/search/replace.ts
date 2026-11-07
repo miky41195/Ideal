@@ -16,7 +16,11 @@ export function replaceMatches(text: string, matches: Match[], replacement: stri
   let done = 0;
   let skipped = 0;
   const byLine = new Map<number, Match[]>();
-  for (const m of matches) byLine.set(m.line, [...(byLine.get(m.line) ?? []), m]);
+  for (const m of matches) {
+    // Only part of a cut match is known: replacing it would leave its tail behind.
+    if (m.cut) skipped++;
+    else byLine.set(m.line, [...(byLine.get(m.line) ?? []), m]);
+  }
 
   for (const [number, found] of byLine) {
     const line = lines[number - 1];

@@ -88,13 +88,7 @@ fn parse_iso_ms(s: &str) -> Option<i64> {
     } else {
         0
     };
-    // days from civil (Howard Hinnant)
-    let y2 = if mo <= 2 { y - 1 } else { y };
-    let era = y2.div_euclid(400);
-    let yoe = y2 - era * 400;
-    let doy = (153 * (if mo > 2 { mo - 3 } else { mo + 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
+    let days = crate::git::history::days_from_civil(y, mo, d);
     Some(((days * 24 + h) * 60 + mi) * 60_000 + se * 1000 + ms)
 }
 
@@ -459,26 +453,49 @@ pub fn session_usage_impl(claude_projects: &Path, project_path: &str, id: Option
 }
 
 /// Link of the session while Remote Control is on: Claude records every change, with a null url on disconnect.
+/// Per transcript: bytes already scanned (complete lines only) and the link found so far.
+/// Transcripts only grow, so each call reads just what was appended since the last one.
+type RemoteScans = Mutex<HashMap<PathBuf, (u64, Option<String>)>>;
+static REMOTE_SCANS: std::sync::LazyLock<RemoteScans> = std::sync::LazyLock::new(Default::default);
+
 pub fn session_remote_impl(claude_projects: &Path, project_path: &str, id: Option<&str>) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
     let path = session_path(claude_projects, project_path, id)?;
-    let file = std::fs::File::open(path).ok()?;
-    let mut url = None;
-    for line in BufReader::new(file).lines().map_while(Result::ok) {
-        if !line.contains("\"remote_session_change\"") {
+    let mut file = std::fs::File::open(&path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let mut scans = REMOTE_SCANS.lock().unwrap_or_else(|e| e.into_inner());
+    // A shorter file was rewritten: start over.
+    let (mut offset, mut url) = scans.get(&path).cloned().filter(|(o, _)| *o <= len).unwrap_or((0, None));
+    file.seek(SeekFrom::Start(offset)).ok()?;
+    let mut r = BufReader::new(file.take(len - offset));
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let n = r.read_until(b'\n', &mut line).ok()?;
+        if n == 0 {
+            break;
+        }
+        // A last line without its newline may still be being written: read it, but scan it again next time.
+        if line.last() == Some(&b'\n') {
+            offset += n as u64;
+        }
+        let text = String::from_utf8_lossy(&line);
+        if !text.contains("\"remote_session_change\"") {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+        let Ok(v) = serde_json::from_str::<Value>(text.trim()) else {
             continue;
         };
         if v.pointer("/attachment/type").and_then(Value::as_str) == Some("remote_session_change") {
             url = v.pointer("/attachment/url").and_then(Value::as_str).map(String::from);
         }
     }
+    scans.insert(path, (offset, url.clone()));
     url
 }
 
 fn at_startup_in(settings: &str) -> bool {
-    serde_json::from_str::<Value>(settings)
+    serde_json::from_str::<Value>(settings.trim_start_matches('\u{feff}'))
         .ok()
         .and_then(|v| v.get("remoteControlAtStartup").and_then(Value::as_bool))
         .unwrap_or(false)
@@ -661,6 +678,28 @@ mod tests {
         assert_eq!(session_remote_impl(&projects, "C:/r", Some("on-1")).as_deref(), Some("https://x/s1"));
         assert_eq!(session_remote_impl(&projects, "C:/r", Some("off-1")), None);
         assert_eq!(session_remote_impl(&projects, "C:/r", Some("mai-1")), None);
+        drop(d);
+    }
+
+    #[test]
+    fn session_remote_reads_only_appended_lines() {
+        use std::io::Write;
+        let (d, projects) = setup();
+        let dir = projects.join(project_slug("C:/inc"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let on = r#"{"attachment":{"type":"remote_session_change","url":"https://x/s2"}}"#;
+        let off = r#"{"attachment":{"type":"remote_session_change","url":null}}"#;
+        let p = dir.join("s-1.jsonl");
+        std::fs::write(&p, format!("{on}\n{{\"type\":\"user\"}}\n")).unwrap();
+        assert_eq!(session_remote_impl(&projects, "C:/inc", Some("s-1")).as_deref(), Some("https://x/s2"));
+        let scanned = REMOTE_SCANS.lock().unwrap()[&p].0;
+        assert_eq!(scanned, std::fs::metadata(&p).unwrap().len());
+        // Link survives later unrelated lines, then a half-written line, then the disconnect.
+        let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
+        write!(f, "{{\"type\":\"assistant\"}}\n{}", &off[..20]).unwrap();
+        assert_eq!(session_remote_impl(&projects, "C:/inc", Some("s-1")).as_deref(), Some("https://x/s2"));
+        writeln!(f, "{}", &off[20..]).unwrap();
+        assert_eq!(session_remote_impl(&projects, "C:/inc", Some("s-1")), None);
         drop(d);
     }
 

@@ -8,7 +8,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn base_cmd(cwd: &Path, args: &[&str], no_locks: bool) -> Command {
     let mut cmd = Command::new("git");
-    cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false"])
+    // core.fsmonitor in a downloaded folder's .git/config would run its program on every status.
+    cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "core.fsmonitor=false"])
         .args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -90,13 +91,7 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String, S
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let mut child = cmd.spawn().map_err(|e| {
-        if e.kind() == ErrorKind::NotFound {
-            "git non trovato".to_string()
-        } else {
-            e.to_string()
-        }
-    })?;
+    let mut child = cmd.spawn().map_err(spawn_err)?;
     fn drain<R: Read + Send + 'static>(r: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
         std::thread::spawn(move || {
             let mut b = Vec::new();
@@ -129,17 +124,38 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String, S
     }
 }
 
+/// Read-only git fed `input` on stdin (e.g. `--stdin` revision lists that would overflow the command line).
+pub fn git_read_stdin(cwd: &Path, args: &[&str], input: String) -> Result<String, String> {
+    let mut child = base_cmd(cwd, args, true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(spawn_err)?;
+    let mut stdin = child.stdin.take().ok_or("stdin non disponibile")?;
+    // Written from another thread: git may fill stdout before it has read all of stdin.
+    let writer = std::thread::spawn(move || {
+        use std::io::Write;
+        let _ = stdin.write_all(input.as_bytes());
+    });
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let _ = writer.join();
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Like `git`, but killed after `timeout` (commands that run user hooks can hang).
+pub fn git_timeout(cwd: &Path, args: &[&str], timeout: Duration) -> Result<String, String> {
+    run_with_timeout(base_cmd(cwd, args, false), timeout)
+}
+
 /// Network git (fetch/pull/push): ssh BatchMode unless the user configured ssh, wall-clock timeout.
 /// Git Credential Manager stays interactive on purpose.
 pub fn git_network(cwd: &Path, args: &[&str], timeout: Duration) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false"])
-        .args(args)
-        .current_dir(cwd)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_LITERAL_PATHSPECS", "1")
-        .env("LC_ALL", "C")
-        .env("LANG", "C");
+    let mut cmd = base_cmd(cwd, args, false);
     if ssh_batch_wanted(cwd) {
         cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
     }

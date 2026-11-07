@@ -33,6 +33,8 @@ pub struct Match {
     pub col: u32,
     pub len: u32,
     pub text: String,
+    /// The match runs past `text`, so `len` covers only part of it (replace must skip it).
+    pub cut: bool,
 }
 
 #[derive(Serialize, Debug)]
@@ -86,7 +88,7 @@ fn utf16_len(s: &str) -> u32 {
 /// Returns (text, col, len) with col/len in UTF-16 units relative to text.
 fn window_text(line: &str, s: usize, en: usize) -> Option<(String, u32, u32)> {
     let pre = line.get(..s)?;
-    let mt = line.get(s..en)?;
+    line.get(s..en)?; // both ends on char boundaries
     let w_start = if pre.chars().take(MAX_TEXT_CHARS / 2).count() < MAX_TEXT_CHARS / 2 {
         0
     } else {
@@ -95,7 +97,6 @@ fn window_text(line: &str, s: usize, en: usize) -> Option<(String, u32, u32)> {
     let w_end = line[w_start..].char_indices().nth(MAX_TEXT_CHARS).map_or(line.len(), |c| w_start + c.0);
     let m_end = en.min(w_end);
     let text = &line[w_start..w_end];
-    let _ = mt;
     Some((
         text.to_string(),
         utf16_len(&line[w_start..s]),
@@ -162,12 +163,14 @@ pub fn project_search_impl(
                 let Some((text, col, len)) = window_text(&text_full, s, en) else {
                     continue;
                 };
+                let cut = len != utf16_len(&text_full[s..en]);
                 res.matches.push(Match {
                     path: path.clone(),
                     line: i as u32 + 1,
                     col,
                     len,
                     text,
+                    cut,
                 });
             }
         }
@@ -318,6 +321,17 @@ mod tests {
         let r = project_search_impl(&root(&d), "foo", &opts(), 2, 1, &g).unwrap();
         assert_eq!(r.matches.len(), 2);
         assert!(r.truncated);
+    }
+
+    #[test]
+    fn long_match_is_flagged_cut() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("long.txt"), format!("x{}\nxy\n", "a".repeat(1000))).unwrap();
+        let g = AtomicU64::new(1);
+        let o = SearchOpts { regex: true, case_sensitive: false, whole_word: false };
+        let r = project_search_impl(&root(&d), "x.*", &o, 100, 1, &g).unwrap();
+        let cut: Vec<(u32, bool)> = r.matches.iter().map(|m| (m.line, m.cut)).collect();
+        assert_eq!(cut, vec![(1, true), (2, false)]);
     }
 
     #[test]

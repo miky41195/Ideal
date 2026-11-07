@@ -32,6 +32,8 @@ export interface EditorTab {
   orphaned?: boolean;
   /** Disk text (LF) of a file that changed on disk while the buffer had unsaved edits; shows the banner. */
   diskConflict?: string;
+  /** Line endings of `diskConflict`, applied if the user takes the disk version. */
+  diskEol?: Eol;
   /** Bumped when the editor must replace its document with `content` (external reload). */
   reloadToken?: number;
   /** One-shot request for the editor to select a range and scroll to it; consumed (cleared) by CodeEditor. */
@@ -95,7 +97,7 @@ export class Tabs {
 
   /** Opens a tab restored from a hot-exit backup: `content` (backup) is dirty against `savedContent` (current disk text). */
   openRestored(path: string, content: string, savedContent: string, eol: Eol, deleted: boolean): void {
-    if (this.tabs.some((t) => t.path === path && isFileTab(t))) return;
+    if (this.fileTab(path)) return;
     this.tabs.push({ kind: 'file', path, name: nameOf(path), content, savedContent, eol, readonly: false, orphaned: deleted || undefined });
     lsp.opened(path);
     if (this.activePath === null) this.activePath = path;
@@ -164,6 +166,7 @@ export class Tabs {
   reloadFromDisk(path: string): void {
     const t = this.tabs.find((x) => x.path === path && isFileTab(x));
     if (!t || t.diskConflict === undefined) return;
+    if (t.diskEol) t.eol = t.diskEol;
     this.applyReload(t, t.diskConflict);
   }
 
@@ -181,6 +184,7 @@ export class Tabs {
     t.savedContent = disk;
     t.diskConflict = undefined;
     t.orphaned = false;
+    delete this.errors[t.path];
     t.reloadToken = (t.reloadToken ?? 0) + 1;
     this.noteBackup(t);
   }
@@ -261,6 +265,7 @@ export class Tabs {
         break;
       case 'conflict':
         cur.diskConflict = disk!;
+        cur.diskEol = (r as { eol: Eol }).eol;
         break;
       case 'deleted':
         this.orphan(path);
@@ -343,16 +348,24 @@ export class Tabs {
     this.activePath = HEATMAP_ID;
   }
 
+  /** Open file tab of `path`, whatever its spelling (drive case, `/` or `\`): one buffer per file. */
+  private fileTab(path: string): EditorTab | undefined {
+    return this.tabs.find((t) => isFileTab(t) && samePath(t.path, path));
+  }
+
   async openFile(path: string): Promise<void> {
-    if (this.tabs.some((t) => t.path === path && isFileTab(t))) {
+    const open = this.fileTab(path);
+    if (open) {
       this.noteFile();
-      this.activePath = path;
+      this.activePath = open.path;
       return;
     }
     this.noteFile();
     try {
       const f = await readTextFile(path);
-      if (!this.tabs.some((t) => t.path === path && isFileTab(t))) {
+      const raced = this.fileTab(path);
+      if (raced) path = raced.path;
+      else {
         this.tabs.push({
           kind: 'file',
           path,
@@ -375,10 +388,10 @@ export class Tabs {
   /** Opens `path` if needed, then asks the editor to select `[col, col+len)` on 1-based `line`. */
   async reveal(path: string, line: number, col = 0, len = 0): Promise<void> {
     await this.openFile(path);
-    const t = this.tabs.find((x) => x.path === path && isFileTab(x));
+    const t = this.fileTab(path);
     if (!t) return;
     t.revealRequest = { line, col, len };
-    this.activePath = path;
+    this.activePath = t.path;
   }
 
   setContent(path: string, content: string): void {
@@ -407,6 +420,11 @@ export class Tabs {
   async save(path: string): Promise<void> {
     const t = this.tabs.find((x) => x.path === path);
     if (!t || t.readonly || !isFileTab(t)) return;
+    if (t.diskConflict !== undefined) {
+      // Saving now would silently overwrite the newer disk version (often Claude's edits).
+      this.errors[path] = `${t.name} è cambiato su disco: scegli Ricarica, Tieni il mio o Confronta prima di salvare`;
+      return;
+    }
     const snapshot = t.content;
     try {
       await writeTextFile(path, snapshot, t.eol);
@@ -443,7 +461,7 @@ export const openFile = (path: string) => tabs.openFile(path);
 setFileOpener({
   async read(path) {
     await tabs.openFile(path);
-    const t = tabs.tabs.find((x) => x.path === path && isFileTab(x));
+    const t = tabs.tabs.find((x) => isFileTab(x) && samePath(x.path, path));
     return t ? t.content : null;
   },
   reveal: (path, line, col) => void tabs.reveal(path, line, col),

@@ -4,6 +4,8 @@ export interface Match {
   col: number;
   len: number;
   text: string;
+  /** The match runs past `text`: `len` covers only part of it. */
+  cut?: boolean;
 }
 
 export function groupMatches(matches: Match[]): { path: string; items: Match[] }[] {

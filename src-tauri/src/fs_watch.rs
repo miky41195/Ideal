@@ -7,6 +7,21 @@ use std::time::Duration;
 use tauri::{Emitter, EventTarget, Manager, Runtime, WebviewWindow};
 
 const DEBOUNCE: Duration = Duration::from_millis(200);
+/// A folder that never goes quiet (a running build, a log being written) still gets its changes out.
+const MAX_WAIT: Duration = Duration::from_secs(2);
+
+/// `first` plus whatever arrives until `debounce` passes without news, or `max_wait` has elapsed.
+pub fn collect_batch(rx: &mpsc::Receiver<Vec<String>>, first: Vec<String>, debounce: Duration, max_wait: Duration) -> Vec<String> {
+    let start = std::time::Instant::now();
+    let mut batch = first;
+    while start.elapsed() < max_wait {
+        match rx.recv_timeout(debounce) {
+            Ok(more) => batch.extend(more),
+            Err(_) => break,
+        }
+    }
+    batch
+}
 
 /// One live recursive watcher per window label. Dropping the entry stops the watch thread.
 #[derive(Default)]
@@ -68,9 +83,12 @@ pub fn fs_watch<R: Runtime>(
         return Ok(());
     }
     let (tx, rx) = mpsc::channel::<Vec<String>>();
+    let root_cb = root.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(ev) = res {
             let paths: Vec<String> = ev.paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            // Filter here, not after batching: build-folder churn must not keep the debounce open.
+            let paths = filter_paths(&root_cb, &paths);
             if !paths.is_empty() {
                 let _ = tx.send(paths);
             }
@@ -85,11 +103,8 @@ pub fn fs_watch<R: Runtime>(
     // The thread ends when the watcher (owner of tx) is dropped and the channel closes.
     std::thread::spawn(move || {
         while let Ok(first) = rx.recv() {
-            let mut batch = first;
-            while let Ok(more) = rx.recv_timeout(DEBOUNCE) {
-                batch.extend(more);
-            }
-            let paths = filter_paths(&root, &batch);
+            let batch = collect_batch(&rx, first, DEBOUNCE, MAX_WAIT);
+            let paths = filter_paths(&root, &batch); // dedup across events
             if paths.is_empty() {
                 continue;
             }
@@ -150,5 +165,33 @@ mod tests {
     fn filter_dedups() {
         let p = "C:\\proj\\a.ts".to_string();
         assert_eq!(filter_paths("C:\\proj", &[p.clone(), p.clone()]), vec![p]);
+    }
+
+    #[test]
+    fn batch_ends_at_max_wait_even_if_events_never_stop() {
+        let (tx, rx) = mpsc::channel::<Vec<String>>();
+        let feeder = std::thread::spawn(move || {
+            for i in 0..60 {
+                if tx.send(vec![format!("f{i}")]).is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let t = std::time::Instant::now();
+        let batch = collect_batch(&rx, vec!["first".into()], Duration::from_millis(200), Duration::from_millis(300));
+        let took = t.elapsed();
+        assert!(took < Duration::from_millis(700), "took {took:?}");
+        assert!(batch.len() > 1 && batch.len() < 61);
+        drop(rx);
+        let _ = feeder.join();
+    }
+
+    #[test]
+    fn batch_ends_after_quiet_debounce() {
+        let (tx, rx) = mpsc::channel::<Vec<String>>();
+        tx.send(vec!["b".into()]).unwrap();
+        let batch = collect_batch(&rx, vec!["a".into()], Duration::from_millis(50), Duration::from_secs(5));
+        assert_eq!(batch, vec!["a".to_string(), "b".to_string()]);
     }
 }

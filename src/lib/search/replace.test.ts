@@ -24,6 +24,12 @@ describe('replaceMatches', () => {
     expect(replaceMatches('foo', [at(1, 'foo', 'foo')], '$& $1').text).toBe('$& $1');
   });
 
+  it('skips a cut match (longer than the result window) instead of replacing only its head', () => {
+    const line = 'x' + 'a'.repeat(400);
+    const cut: Match = { path: 'a', line: 1, col: 0, len: 300, text: line.slice(0, 300), cut: true };
+    expect(replaceMatches(line, [cut], 'y')).toEqual({ text: line, done: 0, skipped: 1 });
+  });
+
   it('skips a match that moved away instead of damaging the line', () => {
     const r = replaceMatches('nothing here\n', [at(1, 'foo bar', 'foo')], 'x');
     expect(r).toEqual({ text: 'nothing here\n', done: 0, skipped: 1 });

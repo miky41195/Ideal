@@ -14,7 +14,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
-use tauri::{Manager, Runtime, State, WebviewWindow};
+use tauri::{Runtime, State, WebviewWindow};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const STDERR_RING: usize = 64 * 1024;
@@ -97,7 +97,7 @@ struct Server {
     stdin: Mutex<ChildStdin>,
     job: Job,
     exited: AtomicBool,
-    #[allow(dead_code)] // read via stderr_tail (diagnostics for early exits)
+    /// Last 64 KB of stderr, used to classify a server that dies right after start.
     stderr: Arc<Mutex<Vec<u8>>>,
 }
 
@@ -315,14 +315,6 @@ impl LspServers {
             }
         }
     }
-
-    #[allow(dead_code)]
-    /// Last stderr output (up to 64 KB) of a server, for diagnostics.
-    pub fn stderr_tail(&self, id: u32) -> Option<String> {
-        let s = self.get(id)?;
-        let r = s.stderr.lock().unwrap_or_else(|e| e.into_inner());
-        Some(String::from_utf8_lossy(&r).into_owned())
-    }
 }
 
 #[tauri::command(async)]
@@ -338,7 +330,6 @@ pub fn lsp_start<R: Runtime>(
         let _ = on_message.send(s);
     });
     let lookup = |c: &str| which::which(c).ok();
-    let _ = window.app_handle(); // keep Manager in scope for generic R
     start_impl(&mgr, window.label(), &language_id, &root, &overrides, &lookup, sink)
 }
 

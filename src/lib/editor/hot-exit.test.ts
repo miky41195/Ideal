@@ -65,6 +65,15 @@ describe('createBackupScheduler', () => {
     s.changed('a', '1', 'lf');
     await expect(s.flush()).rejects.toBeDefined();
   });
+
+  it('flush rejects when an earlier debounced write already failed (e.g. file too big)', async () => {
+    const { write, s } = mk();
+    write.mockRejectedValueOnce('file troppo grande per il backup');
+    s.changed('a', '1', 'lf');
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(write).toHaveBeenCalledTimes(1);
+    await expect(s.flush()).rejects.toBeDefined();
+  });
 });
 
 describe('restoreBackups', () => {
