@@ -39,6 +39,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import UpdateBanner from './lib/update/UpdateBanner.svelte';
   import { updater, setBeforeInstall } from './lib/update/update.svelte';
+  import { getVersion } from '@tauri-apps/api/app';
 
   const project = new URLSearchParams(window.location.search).get('project');
   const name = project ? (project.split(/[\\/]/).filter(Boolean).pop() ?? project) : '';
@@ -98,6 +99,15 @@
         } catch (e) {
           showToast(`Impossibile aprire settings.json: ${e}`);
         }
+      },
+    },
+    {
+      id: 'checkUpdates',
+      label: 'Controlla aggiornamenti',
+      run: async () => {
+        const r = await updater.checkNow();
+        if (r === 'none') showToast(`Ideal è aggiornato (v${await getVersion()})`);
+        else if (r === 'error') showToast('Impossibile controllare gli aggiornamenti: sei offline?');
       },
     },
     {

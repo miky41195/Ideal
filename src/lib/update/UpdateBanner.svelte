@@ -1,5 +1,7 @@
 <script lang="ts">
   import { updater } from './update.svelte';
+
+  let showNotes = $state(false);
 </script>
 
 {#if updater.available && !updater.later}
@@ -14,9 +16,13 @@
     </span>
     {#if updater.error}<span class="err">{updater.error}</span>{/if}
     {#if updater.state !== 'working'}
+      {#if updater.available.notes}
+        <button aria-expanded={showNotes} onclick={() => (showNotes = !showNotes)}>Novità</button>
+      {/if}
       <button class="go" onclick={() => void updater.install()}>{updater.state === 'error' ? 'Riprova' : 'Aggiorna ora'}</button>
       <button onclick={() => (updater.later = true)}>Più tardi</button>
     {/if}
+    {#if showNotes}<p class="notes">{updater.available.notes}</p>{/if}
   </div>
 {/if}
 
@@ -42,6 +48,13 @@
   }
   .err {
     color: var(--danger);
+  }
+  .notes {
+    flex-basis: 100%;
+    margin: 2px 0;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    user-select: text;
   }
   button {
     padding: 0 6px;

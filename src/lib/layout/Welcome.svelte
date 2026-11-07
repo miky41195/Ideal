@@ -3,11 +3,16 @@
   import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { getVersion } from '@tauri-apps/api/app';
 
   let recent = $state<string[]>([]);
   let error = $state('');
+  let version = $state('');
 
   onMount(() => {
+    getVersion()
+      .then((v) => (version = v))
+      .catch(() => {});
     invoke<string[]>('get_recent')
       .then((r) => (recent = r))
       .catch((e) => (error = String(e)));
@@ -33,7 +38,7 @@
 </script>
 
 <main>
-  <h1>Ideal</h1>
+  <h1>Ideal{#if version}<span class="ver">v{version}</span>{/if}</h1>
   <button class="primary" onclick={pick}>Apri cartella</button>
   {#if recent.length}
     <h2>Recenti</h2>
@@ -58,6 +63,13 @@
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--canvas-text);
+  }
+  .ver {
+    margin-left: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--canvas-dim);
   }
   h2 {
     margin: 32px 0 8px;

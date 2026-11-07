@@ -20,14 +20,22 @@ function fakeUpdate(order: string[]) {
 describe('Updater', () => {
   it('check exposes the new version; nothing when up to date or offline', async () => {
     const u = new Updater({ check: async () => fakeUpdate([]) as never, wait: async () => {} });
-    await u.checkNow();
+    expect(await u.checkNow()).toBe('found');
     expect(u.available).toEqual({ version: '0.3.0', notes: 'note' });
     const none = new Updater({ check: async () => null, wait: async () => {} });
-    await none.checkNow();
+    expect(await none.checkNow()).toBe('none');
     expect(none.available).toBeNull();
     const offline = new Updater({ check: async () => Promise.reject(new Error('offline')), wait: async () => {} });
-    await offline.checkNow();
+    expect(await offline.checkNow()).toBe('error');
     expect(offline.available).toBeNull();
+  });
+
+  it('a manual check brings back a banner hidden with "Più tardi"', async () => {
+    const u = new Updater({ check: async () => fakeUpdate([]) as never, wait: async () => {} });
+    await u.checkNow();
+    u.later = true;
+    await u.checkNow();
+    expect(u.later).toBe(false);
   });
 
   it('install: download, then save unsaved buffers, wait for other windows, then install', async () => {

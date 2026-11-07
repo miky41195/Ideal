@@ -27,14 +27,18 @@ export class Updater {
 
   constructor(private deps: UpdaterDeps = defaultDeps) {}
 
-  async checkNow(): Promise<void> {
+  /** Looks for a newer release; a found one shows the banner again even after "Più tardi". */
+  async checkNow(): Promise<'found' | 'none' | 'error'> {
     try {
       const u = await this.deps.check();
-      if (!u) return;
+      if (!u) return 'none';
       this.#update = u;
       this.available = { version: u.version, notes: u.body ?? '' };
+      this.later = false;
+      return 'found';
     } catch (e) {
-      console.warn('update check failed', e); // offline or no release yet: stay quiet
+      console.warn('update check failed', e); // offline or no release yet
+      return 'error';
     }
   }
 
