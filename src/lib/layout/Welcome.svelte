@@ -4,10 +4,13 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { getVersion } from '@tauri-apps/api/app';
+  import { createDir } from '../fs-client';
 
   let recent = $state<string[]>([]);
   let error = $state('');
   let version = $state('');
+  let naming = $state(false);
+  let name = $state('');
 
   onMount(() => {
     getVersion()
@@ -35,11 +38,45 @@
       error = String(e);
     }
   }
+
+  async function create() {
+    const n = name.trim();
+    // Only a single folder name: separators would create nested or outside paths.
+    if (!n || /[\\/]/.test(n) || n === '.' || n === '..') {
+      error = 'Nome non valido';
+      return;
+    }
+    try {
+      const parent = await open({ directory: true, multiple: false, title: 'Dove creare il progetto' });
+      if (typeof parent !== 'string') return;
+      const path = `${parent.replace(/[\\/]+$/, '')}\\${n}`;
+      await createDir(path);
+      await openProject(path);
+    } catch (e) {
+      error = String(e);
+    }
+  }
 </script>
 
 <main>
   <h1>Ideal{#if version}<span class="ver">v{version}</span>{/if}</h1>
-  <button class="primary" onclick={pick}>Apri cartella</button>
+  <div class="actions">
+    <button class="primary" onclick={pick}>Apri cartella</button>
+    <button onclick={() => ((naming = !naming), (error = ''))}>Nuovo progetto</button>
+  </div>
+  {#if naming}
+    <form
+      class="new"
+      onsubmit={(e) => {
+        e.preventDefault();
+        create();
+      }}
+    >
+      <!-- svelte-ignore a11y_autofocus -->
+      <input bind:value={name} placeholder="Nome del progetto" aria-label="Nome del progetto" autofocus />
+      <button class="primary" type="submit" disabled={!name.trim()}>Crea…</button>
+    </form>
+  {/if}
   {#if recent.length}
     <h2>Recenti</h2>
     <ul>
@@ -102,6 +139,17 @@
   .primary:hover:not(:disabled) {
     background: var(--accent);
     filter: brightness(1.08);
+  }
+  .actions,
+  .new {
+    display: flex;
+    gap: 8px;
+  }
+  .new {
+    margin-top: 12px;
+  }
+  .new input {
+    flex: 1;
   }
   .err {
     color: var(--danger);
